@@ -76,7 +76,7 @@ Use `push_content` with `tool_name: "email_template_builder"`:
 
 The test-send action requires both a thread id and workspace id. If only a thread id is supplied, the renderer attempts to resolve the workspace from the TribeX AI thread before saving.
 
-The renderer also accepts the output of `email_campaign_draft_artifact_create` as `draft`; it normalizes the nested `campaignPreparePayload`, `campaignDraftArtifactRef`, `htmlTemplateArtifactRef`, and `audienceArtifactRef` into the campaign builder fields.
+The renderer and persona prompt tools also accept the output of `email_campaign_draft_artifact_create` as `draft`; they normalize the nested `campaignPreparePayload`, `campaignDraftArtifactRef`, `htmlTemplateArtifactRef`, and `audienceArtifactRef` into campaign builder fields without requiring raw audience rows.
 
 ## Guided Start Flow
 

@@ -30,6 +30,34 @@ test("lists template utility tools", async () => {
   ]);
 });
 
+test("prompt tool schemas allow artifact-backed campaign drafts without raw audience rows", async () => {
+  const response = await handleRpc({
+    jsonrpc: "2.0",
+    id: 22,
+    method: "tools/list",
+    params: {},
+  });
+  const tools = Object.fromEntries(
+    response.body.result.tools.map((tool) => [tool.name, tool]),
+  );
+  assert.equal(
+    tools["email-campaign-persona-prompt"].inputSchema.required,
+    undefined,
+  );
+  assert.equal(
+    tools["email-template-persona-test-prompt"].inputSchema.required,
+    undefined,
+  );
+  assert.ok(
+    tools["email-campaign-persona-prompt"].inputSchema.properties
+      .campaignPreparePayload,
+  );
+  assert.ok(
+    tools["email-template-persona-test-prompt"].inputSchema.properties
+      .audienceArtifactRef,
+  );
+});
+
 test("validates template payloads through tool calls", async () => {
   const response = await handleRpc({
     jsonrpc: "2.0",
