@@ -1,0 +1,74 @@
+{
+  "name": "email-deliverability",
+  "version": "0.1.0",
+  "renderers": {
+    "email-template-builder-open": "email_template_builder",
+    "email-template-payload-validate": "rich_content",
+    "email-template-persona-test-prompt": "rich_content",
+    "email-campaign-persona-prompt": "rich_content",
+    "email-template-persona-revision-prompt": "rich_content"
+  },
+  "mcp": {
+    "url": "http://127.0.0.1:4885/mcp",
+    "auth": null,
+    "tool_prefix": "email_deliverability__"
+  },
+  "renderer_definitions": [
+    {
+      "name": "email_template_builder",
+      "description": "Simplified email template builder with guided org/workspace discovery, saved template selection, deterministic HTML-to-text preview, variable extraction, large HTML preview, durable workspace artifact search/load, and TribeX workspace JSON persistence.",
+      "scope": "universal",
+      "tools": [
+        "email-template-builder-open"
+      ],
+      "data_hint": "{ \"thread_id\"?: \"string\", \"workspace_id\"?: \"string\", \"project_id\"?: \"string\", \"organization_id\"?: \"string\", \"draft\"?: { \"name\"?: \"string\", \"templateKey\"?: \"string\", \"templateName\"?: \"string\", \"fromEmail\"?: \"string\", \"sendingIdentityId\"?: \"string\", \"subjectTemplate\"?: \"string\", \"textTemplate\"?: \"string\", \"htmlTemplate\"?: \"string\", \"htmlTemplateArtifactRef\"?: \"object\", \"campaignDraftArtifactRef\"?: \"object\", \"campaignPreparePayload\"?: \"object\", \"htmlArtifactPath\"?: \"string\", \"audience\"?: \"array\", \"audienceArtifactRef\"?: \"object\", \"audienceArtifactPath\"?: \"string\", \"audienceArtifactFormat\"?: \"json|csv\", \"testTo\"?: \"string\", \"decidrProjectId\"?: \"string\", \"decidrDecisionIds\"?: \"array\" } }",
+      "rule": "Use `email_template_builder` when the user wants to draft or edit a reusable HTML email template, choose a TribeX organization/workspace, select a saved durable template or create a new one, inspect explicit `{{variable}}` placeholders, preview HTML and derived plain text against a sample row, save the draft to TribeX AI workspace storage, or inspect advanced artifact/campaign fields only when needed.",
+      "display_mode": "replace",
+      "standalone": true,
+      "standalone_label": "Email Templates"
+    }
+  ],
+  "registry_index": {
+    "summary": "Simplified email template drafting with org/workspace discovery, saved template selection, deterministic HTML-to-text preview, durable artifact search/load, and artifact-backed previews for TribeX AI email deliverability.",
+    "tags": [
+      "email",
+      "deliverability",
+      "templates",
+      "workspace",
+      "persona"
+    ],
+    "tool_groups": [
+      {
+        "name": "Template Builder",
+        "hint": "Open, select organization/workspace, choose saved templates or create a new draft, validate variables, preview HTML plus deterministic plain text, and save deterministic template drafts for TribeX AI workspace storage.",
+        "tools": [
+          "email-template-builder-open",
+          "email-template-payload-validate",
+          "email-template-persona-test-prompt",
+          "email-campaign-persona-prompt",
+          "email-template-persona-revision-prompt"
+        ]
+      }
+    ],
+    "renderer_names": [
+      "email_template_builder"
+    ]
+  },
+  "tool_rules": {
+    "email-template-builder-open": "Returns a lightweight payload for the `email_template_builder` renderer. Use `push_content` with tool_name `email_template_builder` and the returned data to open the UI.",
+    "email-template-payload-validate": "Validates explicit `{{variable}}` placeholders against normalized JSON audience rows. Missing variables block persona test prompt generation.",
+    "email-template-persona-test-prompt": "Builds a safety-scoped prompt for a TribeX AI persona to call `email_campaign_prepare`, `email_campaign_preview`, and `email_campaign_test_send` for exactly one test recipient.",
+    "email-campaign-persona-prompt": "Builds an approval-gated prompt for a TribeX AI persona to call prepare, preview, optional test send, MCPViews review proposal, send apply only after accepted approval, and status.",
+    "email-template-persona-revision-prompt": "Builds a revision prompt for a TribeX AI persona to search for the selected HTML template artifact and update the same workspace path with an expected SHA-256 guard."
+  },
+  "plugin_rules": [
+    "The email-deliverability plugin provides the MCPViews template-building UI. It does not send production email directly.",
+    "The campaign builder can consume artifacts created by sandbox-write-gated TribeX runtime tools `email_template_artifact_create` and `email_campaign_draft_artifact_create`, including `campaignPreparePayload`, workspace artifact refs, and hashes.",
+    "When a selected HTML template is being revised, pass its workspace path, file id, and SHA to the persona and prefer `email_template_artifact_search` plus `email_template_artifact_update`; do not create a new file for revisions unless the user explicitly asks for a copy.",
+    "On open, the template builder should first guide the user through selecting a TribeX organization/workspace, then choosing a saved template/campaign draft or creating a new draft.",
+    "The default template editing view should stay simple: template name, key, subject, HTML source, variables, deterministic plain text preview, large HTML preview, and save. Campaign handoff fields belong behind advanced details or outside the template editor.",
+    "When opened with a workspace id or resolvable thread id, the campaign builder can search durable workspace storage under `email/`, filter by path, and load HTML template, audience, or campaign draft artifacts into the UI.",
+    "Template and campaign drafts may be saved as portable JSON artifacts in TribeX AI durable workspace storage through `window.__tribexAiClient` when the renderer is opened with a workspace id or resolvable thread id.",
+    "Single test sends and production campaign sends must be mediated through a TribeX AI persona using the platform email_campaign_* tools. Production send apply remains impossible until MCPViews approval is accepted."
+  ]
+}
