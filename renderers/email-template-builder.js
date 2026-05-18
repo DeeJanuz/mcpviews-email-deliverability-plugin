@@ -116,6 +116,23 @@
       .trim();
   }
 
+  function sanitizePreviewHtml(html) {
+    var template = document.createElement('template');
+    template.innerHTML = String(html || '');
+    Array.prototype.slice.call(template.content.querySelectorAll('script,iframe,object,embed,form,input,button,textarea,select')).forEach(function(node) {
+      node.remove();
+    });
+    Array.prototype.slice.call(template.content.querySelectorAll('*')).forEach(function(node) {
+      Array.prototype.slice.call(node.attributes || []).forEach(function(attribute) {
+        var name = String(attribute.name || '').toLowerCase();
+        var value = String(attribute.value || '');
+        if (name.indexOf('on') === 0) node.removeAttribute(attribute.name);
+        if ((name === 'href' || name === 'src') && /^\s*javascript:/i.test(value)) node.removeAttribute(attribute.name);
+      });
+    });
+    return template.innerHTML;
+  }
+
   function syncTextTemplate(state) {
     state.textTemplate = htmlToPlainText(state.htmlTemplate);
     return state.textTemplate;
@@ -632,8 +649,122 @@
     });
   }
 
+  function syncHash(value) {
+    var hash = 2166136261;
+    var text = String(value || '');
+    for (var i = 0; i < text.length; i++) {
+      hash ^= text.charCodeAt(i);
+      hash = Math.imul(hash, 16777619);
+    }
+    return ('00000000' + (hash >>> 0).toString(16)).slice(-8);
+  }
+
+  function visibleText(element) {
+    return String(element && element.textContent || '')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .slice(0, 500);
+  }
+
+  function nthOfType(element) {
+    if (!element || !element.parentElement) return 1;
+    var tagName = element.tagName;
+    var index = 1;
+    var sibling = element.previousElementSibling;
+    while (sibling) {
+      if (sibling.tagName === tagName) index += 1;
+      sibling = sibling.previousElementSibling;
+    }
+    return index;
+  }
+
+  function domPathFor(element) {
+    var parts = [];
+    var current = element;
+    while (current && current.nodeType === 1) {
+      var tag = String(current.tagName || '').toLowerCase();
+      if (!tag || tag === 'html') break;
+      if (tag === 'body') {
+        parts.unshift('body');
+        break;
+      }
+      parts.unshift(tag + ':nth-of-type(' + nthOfType(current) + ')');
+      current = current.parentElement;
+    }
+    return parts.join(' > ');
+  }
+
+  function selectionMetadataFromElement(element, iframe, state) {
+    var rect = element.getBoundingClientRect();
+    var outerHTML = String(element.outerHTML || '').replace(/\s+/g, ' ').trim().slice(0, 2000);
+    var domPath = domPathFor(element);
+    return compactObject({
+      id: 'selection_' + Date.now() + '_' + Math.random().toString(16).slice(2),
+      workspacePath: state.htmlArtifactPath,
+      workspaceFileId: state.htmlArtifactFileId,
+      sha256: state.htmlArtifactSha256,
+      selector: domPath,
+      domPath: domPath,
+      tagName: String(element.tagName || '').toLowerCase(),
+      bounds: {
+        x: Math.round(rect.x),
+        y: Math.round(rect.y),
+        width: Math.round(rect.width),
+        height: Math.round(rect.height),
+        iframeWidth: iframe && iframe.clientWidth,
+        iframeHeight: iframe && iframe.clientHeight,
+      },
+      visibleText: visibleText(element),
+      outerHTML: outerHTML,
+      snippetHash: syncHash(outerHTML),
+      changeRequest: '',
+    });
+  }
+
+  function hasEditableOwnText(element) {
+    if (!element || !element.childNodes) return false;
+    return Array.prototype.slice.call(element.childNodes).some(function(node) {
+      return node.nodeType === 3 && String(node.nodeValue || '').replace(/\s+/g, ' ').trim();
+    });
+  }
+
+  function shouldMakeManualEditable(element) {
+    if (!element || !element.tagName) return false;
+    var tag = String(element.tagName || '').toLowerCase();
+    if (/^(html|head|body|table|tbody|thead|tfoot|tr|style|script|meta|link|img|br|hr)$/i.test(tag)) return false;
+    return hasEditableOwnText(element) || (!element.children.length && visibleText(element));
+  }
+
+  function configureManualEditableSurface(root, enabled) {
+    if (!root || !root.querySelectorAll) return;
+    Array.prototype.slice.call(root.querySelectorAll('[data-manual-editable]')).forEach(function(element) {
+      element.removeAttribute('contenteditable');
+      element.removeAttribute('spellcheck');
+      element.removeAttribute('data-manual-editable');
+    });
+    if (!enabled) return;
+    Array.prototype.slice.call(root.querySelectorAll('*')).forEach(function(element) {
+      if (!shouldMakeManualEditable(element)) return;
+      element.setAttribute('contenteditable', 'plaintext-only');
+      element.setAttribute('spellcheck', 'true');
+      element.setAttribute('data-manual-editable', 'true');
+    });
+  }
+
+  function cleanManualEditableHtml(root) {
+    if (!root) return '';
+    var clone = root.cloneNode(true);
+    Array.prototype.slice.call(clone.querySelectorAll('[data-manual-editable]')).forEach(function(element) {
+      element.removeAttribute('contenteditable');
+      element.removeAttribute('spellcheck');
+      element.removeAttribute('data-manual-editable');
+    });
+    return clone.innerHTML.trim();
+  }
+
   function injectStyles() {
-    if (document.getElementById('email-template-builder-styles')) return;
+    var existing = document.getElementById('email-template-builder-styles');
+    if (existing && existing.parentNode) existing.parentNode.removeChild(existing);
     var style = document.createElement('style');
     style.id = 'email-template-builder-styles';
     style.textContent = [
@@ -694,6 +825,8 @@
       '.email-builder-button:hover{background:var(--email-surface-strong);color:var(--email-text);}',
       '.email-builder-button.primary{background:var(--email-accent);border-color:var(--email-accent);color:#fff;}',
       '.email-builder-button.primary:hover{background:var(--email-accent-hover);border-color:var(--email-accent-hover);}',
+      '.email-builder-button.active{background:rgba(129,140,248,.18);border-color:var(--email-accent);color:var(--email-text);box-shadow:0 0 0 3px rgba(129,140,248,.16);}',
+      '.email-builder-button.active::before{content:"";display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--email-accent);margin-right:7px;vertical-align:1px;}',
       '.email-builder-button:disabled{opacity:.55;cursor:not-allowed;}',
       '.email-builder-computed{display:grid;gap:12px;}',
       '.email-builder-strip{border:1px solid var(--email-border);border-radius:12px;background:var(--email-surface);padding:12px;box-shadow:0 1px 0 rgba(255,255,255,.04) inset;}',
@@ -707,11 +840,56 @@
       '.email-builder-dot{width:8px;height:8px;border-radius:50%;background:currentColor;display:inline-block;flex-shrink:0;}',
       '.email-builder-preview-title{font-size:12px;font-weight:700;color:var(--email-muted);margin:10px 0 5px;}',
       '.email-builder-preview-box{border:1px solid var(--email-border);border-radius:8px;background:var(--email-surface-subtle);color:var(--email-text);padding:10px;white-space:pre-wrap;font-size:13px;line-height:1.45;max-height:220px;overflow:auto;}',
+      '.email-builder-preview-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:10px 0 5px;}',
+      '.email-builder-preview-head .email-builder-preview-title{margin:0;}',
+      '.email-builder-preview-frame{position:relative;}',
+      '.email-builder-preview-frame.selecting .email-builder-iframe,.email-builder-preview-frame.manual-editing .email-builder-iframe{display:none;}',
       '.email-builder-iframe{width:100%;height:min(760px,72vh);min-height:560px;border:1px solid var(--email-border);border-radius:8px;background:#fff;}',
+      '.email-builder-iframe.selecting{border-color:var(--email-accent);box-shadow:0 0 0 3px rgba(129,140,248,.18);}',
+      '.email-builder-select-surface{display:none;width:100%;height:min(760px,72vh);min-height:560px;border:1px solid var(--email-accent);border-radius:8px;background:#fff;overflow:auto;box-shadow:0 0 0 3px rgba(129,140,248,.18);}',
+      '.email-builder-preview-frame.selecting .email-builder-select-surface,.email-builder-preview-frame.manual-editing .email-builder-select-surface{display:block;}',
+      '.email-builder-visual-tools{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}',
+      '.email-builder-ai-working{display:flex;align-items:flex-start;gap:10px;border:1px solid rgba(96,165,250,.34);border-radius:10px;background:rgba(96,165,250,.12);color:var(--email-text);padding:10px 11px;margin:10px 0;font-size:13px;line-height:1.45;}',
+      '.email-builder-ai-spinner{width:16px;height:16px;border:2px solid rgba(96,165,250,.28);border-top-color:var(--email-info);border-radius:50%;margin-top:1px;flex:0 0 auto;animation:email-builder-spin .8s linear infinite;}',
+      '.email-builder-ai-working-title{font-weight:750;color:var(--email-text);}',
+      '.email-builder-ai-working-detail{color:var(--email-muted);font-size:12px;}',
+      '@keyframes email-builder-spin{to{transform:rotate(360deg)}}',
+      '.email-builder-selection-list{display:grid;gap:8px;margin-top:10px;}',
+      '.email-builder-selection-card{border:1px solid var(--email-border);border-radius:8px;background:var(--email-surface-subtle);padding:9px;}',
+      '.email-builder-selection-card textarea{width:100%;min-height:72px;margin-top:8px;border:1px solid var(--email-border-strong);border-radius:8px;background:rgba(255,255,255,.045);color:var(--email-text);font:inherit;font-size:13px;line-height:1.4;padding:8px;resize:vertical;}',
+      '.email-builder-selection-meta{display:flex;align-items:center;justify-content:space-between;gap:8px;color:var(--email-muted);font-size:12px;}',
+      '.email-builder-selection-text{margin-top:6px;color:var(--email-text);font-size:12px;line-height:1.45;max-height:54px;overflow:hidden;}',
+      '.email-builder-selection-actions{display:flex;justify-content:flex-end;margin-top:7px;}',
+      '.email-builder-visual-chat{position:fixed;left:0;top:56px;bottom:0;width:340px;z-index:600;display:flex;flex-direction:column;background:rgba(15,17,23,.98);border-right:1px solid var(--email-border-strong);box-shadow:18px 0 42px rgba(0,0,0,.35);transform:translateX(-102%);transition:transform .18s ease;color:var(--email-text);}',
+      '.email-builder-visual-chat.open{transform:translateX(0);}',
+      '.email-builder-visual-chat-head{padding:10px 12px;border-bottom:1px solid var(--email-border);display:flex;align-items:center;justify-content:space-between;gap:10px;}',
+      '.email-builder-visual-chat-title{margin:0;font-size:14px;font-weight:750;color:var(--email-text);}',
+      '.email-builder-visual-chat-subtitle{margin:2px 0 0;font-size:11px;line-height:1.35;color:var(--email-muted);}',
+      '.email-builder-visual-chat-body{padding:10px;display:grid;gap:8px;overflow:auto;flex:1;align-content:start;grid-auto-rows:max-content;}',
+      '.email-builder-visual-chat-empty{border:1px dashed var(--email-border-strong);border-radius:8px;padding:10px;color:var(--email-muted);font-size:12px;line-height:1.4;}',
+      '.email-builder-visual-message{border:1px solid var(--email-border);border-radius:8px;background:var(--email-surface);padding:8px;display:grid;gap:7px;align-self:start;}',
+      '.email-builder-visual-message-textarea{width:100%;height:36px;min-height:36px;max-height:140px;overflow:hidden;border:1px solid var(--email-border-strong);border-radius:8px;background:rgba(255,255,255,.04);color:var(--email-text);font:inherit;font-size:13px;line-height:1.4;padding:8px;resize:none;}',
+      '.email-builder-visual-message-textarea:focus{outline:none;border-color:var(--email-accent);box-shadow:0 0 0 3px rgba(129,140,248,.14);}',
+      '.email-builder-visual-attachment{border:1px solid var(--email-border-strong);border-radius:8px;background:rgba(129,140,248,.08);padding:7px;display:grid;gap:4px;}',
+      '.email-builder-visual-attachment-title{font-size:12px;font-weight:750;color:var(--email-text);}',
+      '.email-builder-visual-attachment-line{font-size:11px;line-height:1.4;color:var(--email-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}',
+      '.email-builder-visual-technical{margin-top:2px;}',
+      '.email-builder-visual-technical summary{cursor:pointer;color:var(--email-muted);font-size:11px;font-weight:650;}',
+      '.email-builder-visual-technical[open] summary{margin-bottom:4px;}',
+      '.email-builder-visual-chat-actions{padding:10px;border-top:1px solid var(--email-border);display:flex;gap:8px;justify-content:flex-end;background:var(--email-surface-subtle);}',
+      '.email-builder-icon-button{width:30px;height:30px;border:1px solid var(--email-border-strong);border-radius:8px;background:transparent;color:var(--email-muted);cursor:pointer;font-size:16px;line-height:1;}',
+      '.email-builder-modal-backdrop{position:fixed;inset:0;z-index:900;background:rgba(0,0,0,.52);display:none;align-items:center;justify-content:center;padding:20px;}',
+      '.email-builder-modal-backdrop.open{display:flex;}',
+      '.email-builder-modal{width:min(560px,100%);border:1px solid var(--email-border-strong);border-radius:12px;background:var(--email-bg);box-shadow:0 24px 80px rgba(0,0,0,.48);overflow:hidden;color:var(--email-text);}',
+      '.email-builder-modal-head{padding:14px 16px;border-bottom:1px solid var(--email-border);}',
+      '.email-builder-modal-title{font-size:15px;font-weight:760;margin:0;color:var(--email-text);}',
+      '.email-builder-modal-body{padding:14px;display:grid;gap:10px;}',
+      '.email-builder-modal textarea{width:100%;min-height:48px;max-height:180px;overflow:hidden;border:1px solid var(--email-border-strong);border-radius:8px;background:rgba(255,255,255,.045);color:var(--email-text);font:inherit;font-size:13px;line-height:1.45;padding:10px;resize:none;}',
+      '.email-builder-modal-actions{padding:12px 16px;border-top:1px solid var(--email-border);display:flex;justify-content:flex-end;gap:8px;background:var(--email-surface-subtle);}',
       '.email-builder-code{width:100%;min-height:170px;border:1px solid rgba(0,0,0,.22);border-radius:8px;background:#080b12;color:#e5e7eb;padding:10px;font-size:12px;line-height:1.45;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono",monospace;white-space:pre;overflow:auto;}',
       '.email-builder-small{font-size:12px;color:var(--email-muted);line-height:1.45;}',
       '@media (prefers-color-scheme: light){.email-builder-root{--email-bg:#f5f5f7;--email-surface:rgba(255,255,255,.78);--email-surface-strong:rgba(255,255,255,.95);--email-surface-subtle:rgba(255,255,255,.52);--email-border:rgba(15,23,42,.09);--email-border-strong:rgba(15,23,42,.16);--email-text:rgba(15,23,42,.9);--email-muted:rgba(15,23,42,.62);--email-faint:rgba(15,23,42,.42);--email-shadow:0 8px 32px rgba(15,23,42,.08);}}',
-      '@media (max-width: 980px){.email-builder-start{grid-template-columns:1fr}.email-builder-grid{grid-template-columns:1fr}}',
+      '@media (max-width: 980px){.email-builder-start{grid-template-columns:1fr}.email-builder-grid{grid-template-columns:1fr}.email-builder-visual-chat{top:48px;width:min(340px,92vw)}}',
       '@media (max-width: 860px){.email-builder-root{padding:12px}.email-builder-stats{grid-template-columns:repeat(2,minmax(0,1fr))}.email-builder-row{grid-template-columns:1fr}.email-builder-header{flex-direction:column}.email-builder-status{text-align:left;align-items:flex-start;min-width:0}.email-builder-status-path{max-width:100%}}',
     ].join('');
     document.head.appendChild(style);
@@ -736,6 +914,8 @@
   function buildInitialState(data) {
     var draft = normalizeDraftInput(isRecord(data && data.draft) ? data.draft : {});
     var campaignDraftRef = normalizeArtifactRef(draft.campaignDraftArtifactRef, 'json');
+    var htmlArtifactPath = firstString([draft.htmlArtifactPath, draft.html_template_artifact_path], '');
+    var htmlArtifactSha256 = firstString([draft.htmlArtifactSha256, draft.html_template_artifact_sha256], '');
     return {
       threadId: firstString([data && data.thread_id, data && data.threadId, draft.threadId], ''),
       workspaceId: firstString([data && data.workspace_id, data && data.workspaceId, draft.workspaceId], ''),
@@ -749,9 +929,9 @@
       subjectTemplate: firstString([draft.subjectTemplate, draft.subject_template], 'Hi {{first_name}}, quick note from TribeX'),
       textTemplate: firstString([draft.textTemplate, draft.text_template], 'Hi {{first_name}},\n\nThanks for taking a look. We can help {{company}} move faster with a deterministic AI workflow.\n\nBest,\nTribeX'),
       htmlTemplate: firstString([draft.htmlTemplate, draft.html_template], '<p>Hi {{first_name}},</p>\n<p>Thanks for taking a look. We can help {{company}} move faster with a deterministic AI workflow.</p>\n<p>Best,<br/>TribeX</p>'),
-      htmlArtifactPath: firstString([draft.htmlArtifactPath, draft.html_template_artifact_path], ''),
+      htmlArtifactPath: htmlArtifactPath,
       htmlArtifactFileId: firstString([draft.htmlArtifactFileId, draft.html_template_artifact_file_id], ''),
-      htmlArtifactSha256: firstString([draft.htmlArtifactSha256, draft.html_template_artifact_sha256], ''),
+      htmlArtifactSha256: htmlArtifactSha256,
       audienceText: defaultAudienceText(draft),
       audienceArtifactPath: firstString([draft.audienceArtifactPath, draft.audience_artifact_path], ''),
       audienceArtifactFileId: firstString([draft.audienceArtifactFileId, draft.audience_artifact_file_id], ''),
@@ -764,6 +944,7 @@
       workspaceOptions: [],
       templateArtifacts: [],
       selectedTemplateKey: '',
+      templateLoadedForKey: '',
       contextStatus: 'Finding organizations and workspace context.',
       templateStatus: 'Select an organization to load saved templates.',
       testTo: firstString([draft.testTo, draft.test_to], ''),
@@ -782,6 +963,17 @@
       busy: false,
       status: campaignDraftRef ? 'Campaign draft artifact loaded' : '',
       promptText: '',
+      visualSelectMode: false,
+      visualSelections: [],
+      visualChatOpen: false,
+      visualEditInFlight: false,
+      manualEditMode: false,
+      manualEditDirty: false,
+      pendingVisualSelection: null,
+      pendingVisualComment: '',
+      visualEditStatus: htmlArtifactPath || draft.htmlTemplate || draft.html_template
+        ? 'Enable AI edit mode, then choose rendered blocks to add comments.'
+        : 'Load a saved HTML artifact to use visual edits.',
     };
   }
 
@@ -790,6 +982,7 @@
     var state = buildInitialState(data || {});
     container.innerHTML = [
       '<div class="email-builder-root">',
+      '  <aside class="email-builder-visual-chat" data-role="visual-chat"></aside>',
       '  <div class="email-builder-shell">',
       '    <header class="email-builder-header">',
       '      <div>',
@@ -909,12 +1102,26 @@
       '          <div class="email-builder-preview-box" data-role="preview-subject"></div>',
       '          <div class="email-builder-preview-title">Plain text preview</div>',
       '          <div class="email-builder-preview-box" data-role="preview-text"></div>',
-      '          <div class="email-builder-preview-title">HTML</div>',
-      '          <iframe class="email-builder-iframe" sandbox="" data-role="preview-html"></iframe>',
+      '          <div class="email-builder-preview-head">',
+      '            <div class="email-builder-preview-title">HTML</div>',
+      '            <div class="email-builder-visual-tools">',
+      '              <button class="email-builder-button" data-action="toggle-visual-select" data-role="toggle-visual-select" aria-pressed="false">AI edit mode</button>',
+      '              <button class="email-builder-button" data-action="toggle-manual-edit" data-role="toggle-manual-edit" aria-pressed="false">Manual edit mode</button>',
+      '              <button class="email-builder-button primary" data-action="save-manual-edits" data-role="save-manual-edits" disabled>Save manual edits</button>',
+      '              <button class="email-builder-button" data-action="refresh-html-artifact">Refresh artifact</button>',
+      '              <button class="email-builder-button primary" data-action="submit-visual-edits">Submit edits</button>',
+      '            </div>',
+      '          </div>',
+      '          <div class="email-builder-preview-frame">',
+      '            <iframe class="email-builder-iframe" sandbox="allow-same-origin" data-role="preview-html"></iframe>',
+      '            <div class="email-builder-select-surface" data-role="select-surface"></div>',
+      '          </div>',
+      '          <div class="email-builder-selection-list" data-role="visual-selections"></div>',
       '        </div>',
       '      </section>',
       '    </div>',
       '  </div>',
+      '  <div class="email-builder-modal-backdrop" data-role="visual-comment-modal"></div>',
       '</div>',
     ].join('');
 
@@ -948,6 +1155,12 @@
     var subjectEl = container.querySelector('[data-role="preview-subject"]');
     var textEl = container.querySelector('[data-role="preview-text"]');
     var htmlEl = container.querySelector('[data-role="preview-html"]');
+    var rootEl = container.querySelector('.email-builder-root');
+    var previewFrameEl = container.querySelector('.email-builder-preview-frame');
+    var selectSurfaceEl = container.querySelector('[data-role="select-surface"]');
+    var visualSelectionsEl = container.querySelector('[data-role="visual-selections"]');
+    var visualChatEl = container.querySelector('[data-role="visual-chat"]');
+    var visualCommentModalEl = container.querySelector('[data-role="visual-comment-modal"]');
     var promptEl = container.querySelector('[data-role="prompt"]');
     var metricVariablesEl = container.querySelector('[data-role="metric-variables"]');
     var metricAudienceEl = container.querySelector('[data-role="metric-audience"]');
@@ -960,9 +1173,17 @@
 
     Array.prototype.slice.call(container.querySelectorAll('[data-field]')).forEach(function(input) {
       input.addEventListener('input', function() {
-        state[input.getAttribute('data-field')] = input.value;
+        var fieldName = input.getAttribute('data-field');
+        state[fieldName] = input.value;
         state.dirty = true;
-        if (input.getAttribute('data-field') === 'organizationId' || input.getAttribute('data-field') === 'workspaceId') {
+        if (fieldName === 'htmlTemplate' || fieldName === 'htmlArtifactPath' || fieldName === 'htmlArtifactSha256') {
+          state.visualSelections = [];
+          state.manualEditMode = false;
+          state.manualEditDirty = false;
+          state.visualEditStatus = 'Template changed. Select rendered blocks again before submitting visual edits.';
+          renderVisualSurfaces();
+        }
+        if (fieldName === 'organizationId' || fieldName === 'workspaceId') {
           renderContextControls();
         }
         refreshComputed();
@@ -978,15 +1199,19 @@
           state.workspaceOptions = [];
           state.templateArtifacts = [];
           state.selectedTemplateKey = '';
+          state.templateLoadedForKey = '';
           refreshFields(['organizationId', 'workspaceId']);
           renderContextControls();
-          runAction(loadWorkspacesForSelectedOrg);
+          runAction(function() {
+            return loadWorkspacesForSelectedOrg().then(loadTemplateChoices);
+          });
           return;
         }
         if (name === 'workspaceId') {
           state.workspaceId = select.value;
           state.templateArtifacts = [];
           state.selectedTemplateKey = '';
+          state.templateLoadedForKey = '';
           refreshField('workspaceId');
           renderContextControls();
           runAction(loadTemplateChoices);
@@ -999,6 +1224,14 @@
       });
     });
 
+    if (templateSelectEl) {
+      ['focus', 'pointerdown'].forEach(function(eventName) {
+        templateSelectEl.addEventListener(eventName, function() {
+          maybeRefreshTemplateChoices();
+        });
+      });
+    }
+
     Array.prototype.slice.call(container.querySelectorAll('[data-action]')).forEach(function(button) {
       button.addEventListener('click', function() {
         var action = button.getAttribute('data-action');
@@ -1008,6 +1241,12 @@
         if (action === 'load-selected-template') runAction(loadSelectedTemplate);
         if (action === 'create-new-template') createNewTemplate();
         if (action === 'save-artifact') runAction(saveArtifact);
+        if (action === 'toggle-visual-select') toggleVisualSelect();
+        if (action === 'toggle-manual-edit') toggleManualEditMode();
+        if (action === 'save-manual-edits') saveManualPreviewEdits();
+        if (action === 'refresh-html-artifact') runAction(refreshCurrentHtmlArtifactFromButton);
+        if (action === 'submit-visual-edits') runAction(submitVisualEdits);
+        if (action === 'toggle-visual-chat') toggleVisualSelect();
         if (action === 'build-prompt') buildPromptOnly();
         if (action === 'build-campaign-prompt') buildCampaignPromptOnly();
         if (action === 'send-test') runAction(sendTestThroughPersona);
@@ -1027,8 +1266,123 @@
       });
     });
 
+    if (visualSelectionsEl) {
+      visualSelectionsEl.addEventListener('input', function(event) {
+        var target = event.target;
+        if (!target || !target.matches || !target.matches('[data-selection-request]')) return;
+        var id = target.getAttribute('data-selection-request');
+        var selection = state.visualSelections.find(function(item) { return item.id === id; });
+        if (selection) selection.changeRequest = target.value;
+      });
+      visualSelectionsEl.addEventListener('click', function(event) {
+        var target = event.target && event.target.closest
+          ? event.target.closest('[data-remove-selection]')
+          : null;
+        if (!target) return;
+        var id = target.getAttribute('data-remove-selection');
+        state.visualSelections = state.visualSelections.filter(function(item) {
+          return item.id !== id;
+        });
+        renderVisualSurfaces();
+      });
+    }
+
+    if (visualChatEl) {
+      visualChatEl.addEventListener('click', function(event) {
+        var actionTarget = event.target && event.target.closest
+          ? event.target.closest('[data-action]')
+          : null;
+        if (!actionTarget) return;
+        var action = actionTarget.getAttribute('data-action');
+        if (action === 'close-visual-chat') disableVisualEditMode();
+        if (action === 'remove-visual-message') {
+          var id = actionTarget.getAttribute('data-selection-id');
+          state.visualSelections = state.visualSelections.filter(function(item) { return item.id !== id; });
+          renderVisualSurfaces();
+        }
+        if (action === 'submit-visual-edits') {
+          runAction(submitVisualEdits);
+        }
+      });
+      visualChatEl.addEventListener('input', function(event) {
+        var target = event.target;
+        if (!target || !target.matches || !target.matches('[data-visual-chat-request]')) return;
+        var id = target.getAttribute('data-visual-chat-request');
+        var selection = state.visualSelections.find(function(item) { return item.id === id; });
+        if (selection) selection.changeRequest = target.value;
+        autoGrowTextarea(target);
+      });
+    }
+
+    if (visualCommentModalEl) {
+      visualCommentModalEl.addEventListener('input', function(event) {
+        var target = event.target;
+        if (!target || !target.matches || !target.matches('[data-role="visual-comment-text"]')) return;
+        state.pendingVisualComment = target.value;
+        autoGrowTextarea(target);
+      });
+      visualCommentModalEl.addEventListener('click', function(event) {
+        var actionTarget = event.target && event.target.closest
+          ? event.target.closest('[data-action]')
+          : null;
+        if (!actionTarget) return;
+        var action = actionTarget.getAttribute('data-action');
+        if (action === 'cancel-visual-comment') closeVisualCommentModal();
+        if (action === 'add-visual-comment') addPendingVisualComment();
+      });
+    }
+
+    htmlEl.addEventListener('load', function() {
+      attachPreviewSelectionHandlers();
+    });
+
+    var selectSurfaceRoot = null;
+    if (selectSurfaceEl) {
+      selectSurfaceRoot = selectSurfaceEl.shadowRoot || selectSurfaceEl.attachShadow({ mode: 'open' });
+      selectSurfaceRoot.addEventListener('click', function(event) {
+        if (state.manualEditMode) {
+          var link = event.target && event.target.closest ? event.target.closest('a') : null;
+          if (link) event.preventDefault();
+          return;
+        }
+        if (!state.visualSelectMode || state.manualEditMode) return;
+        event.preventDefault();
+        event.stopPropagation();
+        var target = event.target && event.target.nodeType === 1 ? event.target : null;
+        if (!target || target === selectSurfaceRoot.host) return;
+        while (target && target.nodeType === 1 && !visibleText(target) && String(target.outerHTML || '').length <= 24) {
+          target = target.parentElement;
+        }
+        if (target) openVisualCommentModal(target, selectSurfaceEl);
+      }, true);
+      selectSurfaceRoot.addEventListener('mouseover', function(event) {
+        if (!state.visualSelectMode || state.manualEditMode) return;
+        var target = event.target && event.target.nodeType === 1 ? event.target : null;
+        if (!target || target === selectSurfaceRoot.host) return;
+        target.style.outline = '2px solid #818cf8';
+        target.style.cursor = 'crosshair';
+      }, true);
+      selectSurfaceRoot.addEventListener('mouseout', function(event) {
+        if (!state.visualSelectMode || state.manualEditMode) return;
+        var target = event.target && event.target.nodeType === 1 ? event.target : null;
+        if (!target || target === selectSurfaceRoot.host) return;
+        target.style.outline = '';
+        target.style.cursor = '';
+      }, true);
+      selectSurfaceRoot.addEventListener('input', function(event) {
+        if (!state.manualEditMode) return;
+        var target = event.target && event.target.nodeType === 1 ? event.target : null;
+        if (!target || !target.matches || !target.matches('[data-manual-editable]')) return;
+        state.manualEditDirty = true;
+        state.status = 'Manual preview edits pending';
+        renderStatus();
+        renderVisualSurfaces();
+      });
+    }
+
     renderContextControls();
     renderArtifactResults();
+    renderVisualSurfaces();
     refreshComputed();
     runAction(discoverContext);
 
@@ -1232,11 +1586,13 @@
       return api.fetchWorkspaces(state.organizationId).then(function(workspaces) {
         state.workspaceOptions = Array.isArray(workspaces) ? workspaces : [];
         var current = state.workspaceOptions.find(function(workspace) { return workspace.id === state.workspaceId; });
-        if (!current && state.workspaceOptions.length === 1) {
+        if (!current && state.workspaceOptions.length) {
           state.workspaceId = state.workspaceOptions[0].id;
+          state.templateLoadedForKey = '';
           refreshField('workspaceId');
         } else if (!current && state.workspaceId && state.workspaceOptions.length) {
           state.workspaceId = '';
+          state.templateLoadedForKey = '';
           refreshField('workspaceId');
         }
         if (state.workspaceId) {
@@ -1270,11 +1626,23 @@
       return kind === 'json' && path.indexOf('/audiences/') < 0 && path.indexOf('.audience.') < 0;
     }
 
+    function currentTemplateContextKey() {
+      return [state.organizationId.trim(), state.workspaceId.trim()].join(':');
+    }
+
+    function maybeRefreshTemplateChoices() {
+      if (state.busy || !state.workspaceId.trim()) return;
+      var contextKey = currentTemplateContextKey();
+      if (state.templateLoadedForKey === contextKey && state.templateArtifacts.length) return;
+      runAction(loadTemplateChoices);
+    }
+
     function loadTemplateChoices() {
       var api = client();
       if (!state.workspaceId) {
         state.templateArtifacts = [];
         state.selectedTemplateKey = '';
+        state.templateLoadedForKey = '';
         state.templateStatus = state.organizationId
           ? 'Select a workspace to load saved templates.'
           : 'Select an organization to load saved templates.';
@@ -1282,6 +1650,7 @@
         return Promise.resolve();
       }
       if (!api || typeof api.listWorkspaceFiles !== 'function') {
+        state.templateLoadedForKey = '';
         state.templateStatus = 'Workspace file search is unavailable in this MCPViews session.';
         renderContextControls();
         return Promise.resolve();
@@ -1318,7 +1687,174 @@
         state.templateStatus = state.templateArtifacts.length
           ? 'Found ' + state.templateArtifacts.length + ' saved template' + (state.templateArtifacts.length === 1 ? '' : 's') + ' or campaign draft' + (state.templateArtifacts.length === 1 ? '' : 's') + '.'
           : 'No saved email templates found. Create new to start a draft.';
+        state.templateLoadedForKey = currentTemplateContextKey();
         renderContextControls();
+      });
+    }
+
+    function selectedWorkspaceContext() {
+      var selected = (state.workspaceOptions || []).find(function(workspace) {
+        return workspace.id === state.workspaceId;
+      });
+      return selected || compactObject({
+        id: state.workspaceId,
+        organizationId: state.organizationId,
+        name: 'Email workspace',
+      });
+    }
+
+    function ensureVisualEditorProject() {
+      var api = client();
+      if (state.projectId.trim()) {
+        return Promise.resolve({
+          id: state.projectId.trim(),
+          workspaceId: state.workspaceId.trim(),
+          organizationId: state.organizationId.trim(),
+        });
+      }
+      if (!state.workspaceId.trim()) {
+        throw new Error('Select a workspace before submitting visual edits.');
+      }
+      if (!api || typeof api.fetchProjects !== 'function') {
+        throw new Error('Project lookup is unavailable; open the builder from a TribeX thread or select a project in advanced details.');
+      }
+      var workspace = selectedWorkspaceContext();
+      return api.fetchProjects(workspace).then(function(projects) {
+        var list = Array.isArray(projects) ? projects : [];
+        var preferred = list.find(function(project) {
+          var label = String(project.name || project.title || '').toLowerCase();
+          return label.indexOf('email') >= 0 || label.indexOf('campaign') >= 0;
+        }) || list[0];
+        if (preferred && preferred.id) return preferred;
+        if (typeof api.createProject !== 'function') {
+          throw new Error('No project exists in this workspace for the visual editor thread.');
+        }
+        return api.createProject(workspace, 'Email Template Visual Edits');
+      }).then(function(project) {
+        if (!project || !project.id) throw new Error('Could not resolve a project for the visual editor thread.');
+        state.projectId = project.id;
+        refreshField('projectId');
+        return project;
+      });
+    }
+
+    function ensureVisualEditorThread() {
+      var api = client();
+      if (!api || typeof api.sendMessage !== 'function') {
+        throw new Error('TribeX AI persona messaging is unavailable in this MCPViews session.');
+      }
+      if (state.threadId.trim()) return Promise.resolve(state.threadId.trim());
+      if (typeof api.createThread !== 'function') {
+        throw new Error('Thread creation is unavailable; open the builder from an authenticated TribeX AI thread.');
+      }
+      state.visualEditStatus = 'Creating an email-template-visual-editor thread for this workspace.';
+      renderVisualSurfaces();
+      return ensureVisualEditorProject().then(function(project) {
+        return api.createThread(
+          project.id,
+          'Email template visual edits',
+          'email-template-visual-editor',
+        );
+      }).then(function(thread) {
+        var threadId = firstString([thread && thread.id, thread && thread.threadId, thread && thread.thread_id], '');
+        if (!threadId) throw new Error('Visual editor thread was created without an id.');
+        state.threadId = threadId;
+        state.visualEditStatus = 'Visual editor thread ready. Submitting the selected edit batch.';
+        refreshField('threadId');
+        renderVisualSurfaces();
+        return threadId;
+      });
+    }
+
+    function configureVisualEditorRuntime(threadId) {
+      var api = client();
+      var workspaceId = state.workspaceId.trim();
+      if (
+        !threadId ||
+        !workspaceId ||
+        !api ||
+        typeof api.configureThreadRuntime !== 'function'
+      ) {
+        return Promise.resolve(threadId);
+      }
+      return Promise.resolve(api.configureThreadRuntime(threadId, {
+        runtimeSessionBody: {
+          deviceKey: 'mcpviews-' + workspaceId,
+          label: 'MCPViews Email Builder',
+          platform: 'tauri-desktop',
+          purpose: 'email-template-visual-editor',
+          metadata: {
+            client: 'mcpviews-email-deliverability-plugin',
+            source: 'visual-edit-submit',
+            workspacePath: state.htmlArtifactPath || null,
+          },
+        },
+      })).then(function() {
+        return threadId;
+      });
+    }
+
+    function htmlTemplateBytes() {
+      var text = String(state.htmlTemplate || '');
+      if (window.TextEncoder) return new TextEncoder().encode(text);
+      var bytes = new Uint8Array(text.length);
+      for (var i = 0; i < text.length; i++) bytes[i] = text.charCodeAt(i) & 0xff;
+      return bytes;
+    }
+
+    function ensureHtmlTemplateArtifactForVisualEdit() {
+      if (state.htmlArtifactFileId.trim() && state.htmlArtifactSha256.trim()) {
+        return Promise.resolve();
+      }
+      if (!state.workspaceId.trim()) {
+        throw new Error('Select a workspace before submitting visual edits.');
+      }
+      if (
+        !window.__tribexAiClient ||
+        typeof window.__tribexAiClient.initWorkspaceFileUpload !== 'function' ||
+        typeof window.__tribexAiClient.uploadWorkspaceFileToSignedUrl !== 'function'
+      ) {
+        throw new Error('TribeX AI workspace upload APIs are unavailable in this MCPViews session.');
+      }
+      validateState(state);
+      var path = state.htmlArtifactPath.trim();
+      if (!path || !/\.html?$/i.test(path)) {
+        path = 'email/templates/' + slugify(state.name || state.templateName || 'email-template') + '-' + timestampId() + '.html';
+      }
+      var bytes = htmlTemplateBytes();
+      var blob = new Blob([bytes], { type: 'text/html' });
+      state.visualEditStatus = 'Saving the current HTML as a durable template artifact before submitting visual edits.';
+      renderVisualSurfaces();
+      return sha256Hex(bytes, '').then(function(hash) {
+        return window.__tribexAiClient.initWorkspaceFileUpload(state.workspaceId.trim(), {
+          relativePath: path,
+          contentType: 'text/html',
+          sizeBytes: blob.size,
+          source: 'mcpviews-email-template-builder',
+          metadata: {
+            templateName: state.name || state.templateName,
+            sha256: hash || undefined,
+          },
+        }).then(function(init) {
+          return window.__tribexAiClient.uploadWorkspaceFileToSignedUrl(init && init.upload, blob)
+            .then(function() {
+              var file = init && init.file ? init.file : {};
+              var sha = hash || fileChecksum(file);
+              state.htmlArtifactPath = filePath(file) || path;
+              state.htmlArtifactFileId = firstString([file.id, file.workspaceFileId], state.htmlArtifactFileId);
+              state.htmlArtifactSha256 = sha || state.htmlArtifactSha256;
+              state.visualSelections = (state.visualSelections || []).map(function(selection) {
+                return Object.assign({}, selection, {
+                  workspacePath: state.htmlArtifactPath,
+                  workspaceFileId: state.htmlArtifactFileId,
+                  sha256: state.htmlArtifactSha256,
+                });
+              });
+              refreshFields(['htmlArtifactPath', 'htmlArtifactFileId', 'htmlArtifactSha256']);
+              state.visualEditStatus = 'Durable HTML artifact saved. Submitting visual edit batch.';
+              renderVisualSurfaces();
+            });
+        });
       });
     }
 
@@ -1406,6 +1942,631 @@
       }).join('');
     }
 
+    function renderVisualSurfaces() {
+      var selectToggle = container.querySelector('[data-role="toggle-visual-select"]');
+      if (selectToggle) {
+        selectToggle.classList.toggle('active', state.visualSelectMode);
+        selectToggle.setAttribute('aria-pressed', state.visualSelectMode ? 'true' : 'false');
+        selectToggle.textContent = state.visualSelectMode ? 'Disable edit mode' : 'AI edit mode';
+        selectToggle.title = state.visualSelectMode
+          ? 'Disable AI edit mode and close the visual edit chat.'
+          : 'Turn on AI edit mode for block selection and persona-assisted edits.';
+      }
+      var manualToggle = container.querySelector('[data-role="toggle-manual-edit"]');
+      if (manualToggle) {
+        manualToggle.classList.toggle('active', state.manualEditMode);
+        manualToggle.setAttribute('aria-pressed', state.manualEditMode ? 'true' : 'false');
+        manualToggle.textContent = state.manualEditMode ? 'Exit manual mode' : 'Manual edit mode';
+        manualToggle.title = state.manualEditMode
+          ? 'Exit manual text editing without applying additional preview changes.'
+          : 'Edit template text directly in the rendered preview.';
+      }
+      var manualSave = container.querySelector('[data-role="save-manual-edits"]');
+      if (manualSave) {
+        manualSave.disabled = state.busy || !state.manualEditMode || !state.manualEditDirty;
+      }
+      renderVisualSelections();
+      renderVisualChat();
+      renderVisualCommentModal();
+    }
+
+    function visualAttachmentLines(selection) {
+      return [
+        'path ' + (selection.workspacePath || 'unknown'),
+        'selector ' + (selection.domPath || selection.selector || 'unknown'),
+        'hash ' + (selection.snippetHash || 'unknown'),
+        'sha ' + String(selection.sha256 || '').slice(0, 12),
+      ];
+    }
+
+    function compactVisualAttachmentTitle(selection) {
+      var tag = String(selection && selection.tagName ? selection.tagName : 'block').toLowerCase();
+      var hash = selection && selection.snippetHash ? String(selection.snippetHash).slice(0, 8) : '';
+      return hash ? 'Selection attached · ' + tag + ' · ' + hash : 'Selection attached · ' + tag;
+    }
+
+    function autoGrowTextarea(textarea) {
+      if (!textarea) return;
+      var minHeight = Number(textarea.getAttribute('data-min-height') || 36);
+      var maxHeight = Number(textarea.getAttribute('data-max-height') || 140);
+      textarea.style.height = minHeight + 'px';
+      var nextHeight = Math.min(Math.max(textarea.scrollHeight, minHeight), maxHeight);
+      textarea.style.height = nextHeight + 'px';
+      textarea.style.overflowY = textarea.scrollHeight > maxHeight ? 'auto' : 'hidden';
+    }
+
+    function resizeVisualTextareas(root) {
+      if (!root || !root.querySelectorAll) return;
+      Array.prototype.slice.call(root.querySelectorAll('[data-auto-grow]')).forEach(autoGrowTextarea);
+    }
+
+    function renderVisualChat() {
+      if (!visualChatEl) return;
+      var selections = state.visualSelections || [];
+      visualChatEl.classList.toggle('open', state.visualSelectMode);
+      visualChatEl.innerHTML = [
+        '<div class="email-builder-visual-chat-head">',
+        '  <div>',
+        '    <p class="email-builder-visual-chat-title">Visual edit chat</p>',
+        '    <p class="email-builder-visual-chat-subtitle">Each comment carries a DOM metadata attachment. Submit once when the batch is ready.</p>',
+        '  </div>',
+        '</div>',
+        '<div class="email-builder-visual-chat-body">',
+        selections.length
+          ? selections.map(function(selection, index) {
+              return [
+                '<div class="email-builder-visual-message">',
+                '  <div class="email-builder-selection-meta">',
+                '    <span>Comment ' + esc(index + 1) + ' · ' + esc(selection.tagName || 'block') + '</span>',
+                '    <button class="email-builder-button" data-action="remove-visual-message" data-selection-id="' + esc(selection.id) + '">Remove</button>',
+                '  </div>',
+                '  <textarea class="email-builder-visual-message-textarea" rows="1" data-auto-grow data-min-height="36" data-max-height="140" data-visual-chat-request="' + esc(selection.id) + '" aria-label="Edit visual change request">' + esc(selection.changeRequest || '') + '</textarea>',
+                '  <div class="email-builder-visual-attachment">',
+                '    <div class="email-builder-visual-attachment-title">' + esc(compactVisualAttachmentTitle(selection)) + '</div>',
+                '    <div class="email-builder-selection-text">' + esc(selection.visibleText || selection.outerHTML || 'Selected block') + '</div>',
+                '    <details class="email-builder-visual-technical">',
+                '      <summary>Technical details</summary>',
+                visualAttachmentLines(selection).map(function(line) {
+                  return '<div class="email-builder-visual-attachment-line">' + esc(line) + '</div>';
+                }).join(''),
+                '    </details>',
+                '  </div>',
+                '</div>',
+              ].join('');
+            }).join('')
+          : '<div class="email-builder-visual-chat-empty">Select a rendered block, add a comment, and it will appear here with its DOM attachment.</div>',
+        '</div>',
+        '<div class="email-builder-visual-chat-actions">',
+        '  <button class="email-builder-button" data-action="close-visual-chat">Disable edit mode</button>',
+        '  <button class="email-builder-button primary" data-action="submit-visual-edits"' + (selections.length ? '' : ' disabled') + '>Submit edits</button>',
+        '</div>',
+      ].join('');
+      resizeVisualTextareas(visualChatEl);
+    }
+
+    function renderVisualCommentModal() {
+      if (!visualCommentModalEl) return;
+      var selection = state.pendingVisualSelection;
+      visualCommentModalEl.classList.toggle('open', !!selection);
+      if (!selection) {
+        visualCommentModalEl.innerHTML = '';
+        return;
+      }
+      visualCommentModalEl.innerHTML = [
+        '<div class="email-builder-modal" role="dialog" aria-modal="true" aria-label="Add visual edit comment">',
+        '  <div class="email-builder-modal-head">',
+        '    <p class="email-builder-modal-title">Add a comment for this block</p>',
+        '  </div>',
+        '  <div class="email-builder-modal-body">',
+        '    <div class="email-builder-visual-attachment">',
+        '      <div class="email-builder-visual-attachment-title">' + esc(compactVisualAttachmentTitle(selection)) + '</div>',
+        '      <div class="email-builder-selection-text">' + esc(selection.visibleText || selection.outerHTML || 'Selected block') + '</div>',
+        '      <details class="email-builder-visual-technical">',
+        '        <summary>Technical details</summary>',
+        visualAttachmentLines(selection).map(function(line) {
+          return '<div class="email-builder-visual-attachment-line">' + esc(line) + '</div>';
+        }).join(''),
+        '      </details>',
+        '    </div>',
+        '    <textarea data-role="visual-comment-text" rows="1" data-auto-grow data-min-height="48" data-max-height="180" placeholder="Describe what should change in this selected block">' + esc(state.pendingVisualComment || '') + '</textarea>',
+        '  </div>',
+        '  <div class="email-builder-modal-actions">',
+        '    <button class="email-builder-button" data-action="cancel-visual-comment">Cancel</button>',
+        '    <button class="email-builder-button primary" data-action="add-visual-comment">Add comment</button>',
+        '  </div>',
+        '</div>',
+      ].join('');
+      var textarea = visualCommentModalEl.querySelector('[data-role="visual-comment-text"]');
+      if (textarea) setTimeout(function() { autoGrowTextarea(textarea); textarea.focus(); }, 0);
+    }
+
+    function renderVisualSelections() {
+      if (!visualSelectionsEl) return;
+      var canEdit = !!state.htmlTemplate.trim();
+      var selections = state.visualSelections || [];
+      if (state.manualEditMode) {
+        visualSelectionsEl.innerHTML = '<div class="email-builder-small">' + esc(state.manualEditDirty
+          ? 'Manual edit mode is active. Click Save manual edits to apply the preview text changes to the HTML template.'
+          : 'Manual edit mode is active. Click text in the rendered template to edit it. Placeholder variables remain visible so they are not hardcoded.') + '</div>';
+        return;
+      }
+      var working = state.visualEditInFlight
+        ? [
+            '<div class="email-builder-ai-working" role="status" aria-live="polite">',
+            '  <span class="email-builder-ai-spinner" aria-hidden="true"></span>',
+            '  <span>',
+            '    <span class="email-builder-ai-working-title">AI visual editor is working</span>',
+            '    <span class="email-builder-ai-working-detail"> Applying comments to the durable HTML artifact, then refreshing this preview.</span>',
+            '  </span>',
+            '</div>',
+          ].join('')
+        : '';
+      var header = [
+        working,
+        '<div class="email-builder-small">',
+        esc(state.visualEditStatus || (canEdit
+          ? 'Select rendered blocks in the HTML preview, then add change requests.'
+          : 'Load or save an HTML artifact with a SHA before visual edits.')),
+        '</div>',
+      ].join('');
+      if (!selections.length) {
+        visualSelectionsEl.innerHTML = header;
+        return;
+      }
+      visualSelectionsEl.innerHTML = header + '<div class="email-builder-small">' +
+        esc(selections.length + ' comment' + (selections.length === 1 ? '' : 's') + ' queued in AI edit mode.') +
+        '</div>';
+    }
+
+    function toggleVisualSelect() {
+      if (state.visualSelectMode) {
+        disableVisualEditMode();
+        return;
+      }
+      if (state.manualEditMode) disableManualEditMode(false);
+      state.visualSelectMode = true;
+      state.visualChatOpen = true;
+      state.visualEditStatus = 'AI edit mode is on. Click a rendered block to add a comment.';
+      htmlEl.classList.toggle('selecting', state.visualSelectMode);
+      if (previewFrameEl) previewFrameEl.classList.toggle('selecting', state.visualSelectMode);
+      attachPreviewSelectionHandlers();
+      renderVisualSurfaces();
+    }
+
+    function toggleManualEditMode() {
+      if (state.manualEditMode) {
+        disableManualEditMode(false);
+        return;
+      }
+      if (!state.htmlTemplate.trim()) {
+        state.visualEditStatus = 'Add or load an HTML template before using manual edit mode.';
+        renderVisualSurfaces();
+        return;
+      }
+      if (state.visualSelectMode) disableVisualEditMode();
+      state.manualEditMode = true;
+      state.manualEditDirty = false;
+      state.visualEditStatus = 'Manual edit mode is on. Edit rendered text values, then save manual edits.';
+      htmlEl.classList.remove('selecting');
+      if (previewFrameEl) {
+        previewFrameEl.classList.remove('selecting');
+        previewFrameEl.classList.add('manual-editing');
+      }
+      updateSelectSurface(state.htmlTemplate || '<p>No HTML template.</p>');
+      renderVisualSurfaces();
+    }
+
+    function disableManualEditMode(showStatus) {
+      state.manualEditMode = false;
+      state.manualEditDirty = false;
+      if (previewFrameEl) previewFrameEl.classList.remove('manual-editing');
+      if (showStatus !== false) state.visualEditStatus = 'Manual edit mode is off.';
+      refreshComputed();
+    }
+
+    function saveManualPreviewEdits() {
+      if (!state.manualEditMode) return;
+      if (!selectSurfaceRoot) throw new Error('Manual edit preview is unavailable.');
+      var documentEl = selectSurfaceRoot.querySelector('.email-select-document');
+      if (!documentEl) throw new Error('Manual edit document is unavailable.');
+      var nextHtml = cleanManualEditableHtml(documentEl);
+      if (!nextHtml.trim()) throw new Error('Manual edit result is empty.');
+      state.htmlTemplate = nextHtml;
+      syncTextTemplate(state);
+      state.dirty = true;
+      state.manualEditMode = false;
+      state.manualEditDirty = false;
+      state.visualSelections = [];
+      state.visualEditStatus = 'Manual preview edits saved to the HTML template.';
+      state.status = 'Manual edits applied';
+      if (previewFrameEl) previewFrameEl.classList.remove('manual-editing');
+      refreshFields(['htmlTemplate', 'textTemplate']);
+      refreshComputed();
+    }
+
+    function disableVisualEditMode() {
+      state.visualSelectMode = false;
+      state.visualChatOpen = false;
+      state.pendingVisualSelection = null;
+      state.pendingVisualComment = '';
+      state.visualEditStatus = 'AI edit mode is off.';
+      htmlEl.classList.remove('selecting');
+      if (previewFrameEl) previewFrameEl.classList.remove('selecting');
+      renderVisualSurfaces();
+    }
+
+    function openVisualCommentModal(target, viewportEl) {
+      if (!state.htmlTemplate.trim()) {
+        state.visualEditStatus = 'Add or load an HTML template before selecting blocks.';
+        renderVisualSurfaces();
+        return;
+      }
+      var selection = selectionMetadataFromElement(target, viewportEl || htmlEl, state);
+      var duplicate = state.visualSelections.some(function(item) {
+        return item.domPath === selection.domPath && item.snippetHash === selection.snippetHash;
+      });
+      if (duplicate) {
+        state.visualChatOpen = true;
+        state.visualEditStatus = 'That block already has a comment queued in the visual edit chat.';
+        renderVisualSurfaces();
+        return;
+      }
+      state.pendingVisualSelection = selection;
+      state.pendingVisualComment = '';
+      state.visualEditStatus = 'Selected block ready. Add a comment to attach it to the edit chat.';
+      renderVisualSurfaces();
+    }
+
+    function closeVisualCommentModal() {
+      state.pendingVisualSelection = null;
+      state.pendingVisualComment = '';
+      state.visualEditStatus = state.visualSelectMode
+        ? 'AI edit mode is on. Click a rendered block to add a comment.'
+        : 'AI edit mode is off.';
+      renderVisualSurfaces();
+    }
+
+    function addPendingVisualComment() {
+      var comment = String(state.pendingVisualComment || '').trim();
+      if (!state.pendingVisualSelection) return;
+      if (!comment) {
+        state.visualEditStatus = 'Add a comment before attaching this selected block.';
+        renderVisualSurfaces();
+        return;
+      }
+      var selection = Object.assign({}, state.pendingVisualSelection, { changeRequest: comment });
+      state.visualSelections.push(selection);
+      state.pendingVisualSelection = null;
+      state.pendingVisualComment = '';
+      state.visualChatOpen = true;
+      state.visualEditStatus = 'Comment added to the visual edit chat. Select another block or submit the batch.';
+      renderVisualSurfaces();
+    }
+
+    function attachPreviewSelectionHandlers() {
+      var doc;
+      try {
+        doc = htmlEl.contentDocument || (htmlEl.contentWindow && htmlEl.contentWindow.document);
+      } catch {
+        state.visualEditStatus = 'Preview DOM is not inspectable in this browser session.';
+        renderVisualSurfaces();
+        return;
+      }
+      if (!doc || !doc.body || doc.__emailVisualSelectionAttached) return;
+      doc.__emailVisualSelectionAttached = true;
+      doc.body.addEventListener('mouseover', function(event) {
+        if (!state.visualSelectMode) return;
+        var target = event.target && event.target.nodeType === 1 ? event.target : null;
+        if (!target || target === doc.body || target === doc.documentElement) return;
+        if (doc.__emailHovered && doc.__emailHovered !== target) {
+          doc.__emailHovered.style.outline = doc.__emailHovered.__emailPreviousOutline || '';
+          doc.__emailHovered.style.cursor = doc.__emailHovered.__emailPreviousCursor || '';
+        }
+        if (!target.__emailPreviousOutline) target.__emailPreviousOutline = target.style.outline || '';
+        if (!target.__emailPreviousCursor) target.__emailPreviousCursor = target.style.cursor || '';
+        target.style.outline = '2px solid #818cf8';
+        target.style.cursor = 'crosshair';
+        doc.__emailHovered = target;
+      }, true);
+      doc.body.addEventListener('mouseout', function(event) {
+        if (!state.visualSelectMode) return;
+        var target = event.target && event.target.nodeType === 1 ? event.target : null;
+        if (!target || target !== doc.__emailHovered) return;
+        target.style.outline = target.__emailPreviousOutline || '';
+        target.style.cursor = target.__emailPreviousCursor || '';
+        doc.__emailHovered = null;
+      }, true);
+      doc.body.addEventListener('click', function(event) {
+        if (!state.visualSelectMode) return;
+        event.preventDefault();
+        event.stopPropagation();
+        var target = event.target && event.target.nodeType === 1 ? event.target : null;
+        if (!target || target === doc.body || target === doc.documentElement) return;
+        if (!state.htmlArtifactPath.trim() || !state.htmlArtifactSha256.trim()) {
+          state.visualEditStatus = 'This draft will be saved as a durable HTML artifact when you submit edits.';
+          renderVisualSurfaces();
+        }
+        openVisualCommentModal(target, htmlEl);
+      }, true);
+    }
+
+    function updateSelectSurface(renderedHtml) {
+      if (!selectSurfaceRoot) return;
+      var manual = !!state.manualEditMode;
+      selectSurfaceRoot.innerHTML = [
+        '<style>',
+        ':host{display:block;height:100%;background:#fff;color:#111827;}',
+        '.email-select-document{min-height:100%;padding:12px;background:#fff;font-family:Arial,sans-serif;font-size:14px;line-height:1.45;color:#111827;}',
+        '.email-select-document *{box-sizing:border-box;}',
+        '.email-select-document.manual-editing [data-manual-editable="true"]{outline:1px dashed rgba(37,99,235,.45);outline-offset:2px;cursor:text;border-radius:3px;}',
+        '.email-select-document.manual-editing [data-manual-editable="true"]:hover,.email-select-document.manual-editing [data-manual-editable="true"]:focus{outline:2px solid #2563eb;background:rgba(37,99,235,.08);}',
+        '</style>',
+        '<div class="email-select-document' + (manual ? ' manual-editing' : '') + '">',
+        sanitizePreviewHtml(manual ? state.htmlTemplate : renderedHtml),
+        '</div>',
+      ].join('');
+      configureManualEditableSurface(selectSurfaceRoot.querySelector('.email-select-document'), manual);
+    }
+
+    function buildVisualEditPrompt() {
+      var requests = (state.visualSelections || []).map(function(selection) {
+        return Object.assign({}, selection, {
+          changeRequest: String(selection.changeRequest || '').trim(),
+        });
+      });
+      if (!state.htmlArtifactPath.trim()) throw new Error('HTML artifact path is required for visual edits.');
+      if (!state.htmlArtifactSha256.trim()) throw new Error('HTML artifact sha256 is required for visual edits.');
+      if (!requests.length) throw new Error('Select at least one rendered HTML block first.');
+      var missing = requests.filter(function(selection) { return !selection.changeRequest; });
+      if (missing.length) throw new Error('Every selected block needs a change request.');
+      var payload = {
+        targetPersonaKey: 'email-template-visual-editor',
+        artifactRef: compactObject({
+          source: 'workspace_file',
+          format: 'html',
+          workspacePath: state.htmlArtifactPath.trim(),
+          workspaceFileId: state.htmlArtifactFileId.trim(),
+          sha256: state.htmlArtifactSha256.trim(),
+        }),
+        selections: requests.map(function(selection, index) {
+          return compactObject({
+            index: index + 1,
+            selector: selection.selector,
+            domPath: selection.domPath,
+            tagName: selection.tagName,
+            bounds: selection.bounds,
+            visibleText: selection.visibleText,
+            outerHTML: selection.outerHTML,
+            snippetHash: selection.snippetHash,
+            changeRequest: selection.changeRequest,
+          });
+        }),
+        constraints: {
+          updateSameWorkspacePath: true,
+          expectedSha256: state.htmlArtifactSha256.trim(),
+          metadataOnlySelectionContext: true,
+          screenshotsIncluded: false,
+          forbiddenTools: [
+            'email_template_artifact_create',
+            'email_campaign_prepare',
+            'email_campaign_preview',
+            'email_campaign_test_send',
+            'email_campaign_review_propose',
+            'email_campaign_send_apply',
+          ],
+        },
+      };
+      return [
+        'Route this request to the plugin-specific system persona with stable key `email-template-visual-editor` when that persona is available.',
+        '',
+        'Apply a batch visual edit to one existing durable HTML email template artifact.',
+        '',
+        'Use only these artifact tools:',
+        '1. email_template_artifact_search with includeContent=true to read the current artifact.',
+        '2. email_template_artifact_update with the exact same workspacePath and expectedSha256.',
+        '',
+        'Do not call email_template_artifact_create.',
+        'Do not create a copy or variant unless the user explicitly asks for one.',
+        'Do not call campaign prepare, preview, test send, review, or production send tools.',
+        'Preserve safe email HTML: no scripts, event handlers, javascript: URLs, forms, tracking pixels, or remote code.',
+        'Use the metadata-only selected block context to target the requested blocks, but update the full HTML artifact once.',
+        'Return workspacePath, workspaceFileId, previousSha256, new sha256, variables, and a short edit summary.',
+        '',
+        'Visual edit payload:',
+        '```json',
+        JSON.stringify(payload, null, 2),
+        '```',
+      ].join('\n');
+    }
+
+    function resolveCurrentHtmlArtifactFile() {
+      var htmlFileId = state.htmlArtifactFileId.trim();
+      if (htmlFileId) {
+        return Promise.resolve({
+          id: htmlFileId,
+          relativePath: state.htmlArtifactPath,
+          contentType: 'text/html',
+          checksum: state.htmlArtifactSha256,
+        });
+      }
+      var path = state.htmlArtifactPath.trim();
+      if (!path || !window.__tribexAiClient || typeof window.__tribexAiClient.listWorkspaceFiles !== 'function') {
+        return Promise.resolve(null);
+      }
+      var slashIndex = path.lastIndexOf('/');
+      var prefix = slashIndex >= 0 ? path.slice(0, slashIndex + 1) : '';
+      return ensureWorkspaceContext()
+        .then(function(workspaceId) {
+          return window.__tribexAiClient.listWorkspaceFiles(workspaceId, prefix);
+        })
+        .then(function(result) {
+          var list = Array.isArray(result) ? result : (result && result.files || []);
+          return list.find(function(file) {
+            return filePath(file) === path;
+          }) || null;
+        })
+        .catch(function(error) {
+          state.visualEditStatus = error && error.message
+            ? 'Could not search for the artifact to refresh: ' + error.message
+            : 'Could not search for the artifact to refresh.';
+          renderVisualSurfaces();
+          return null;
+        });
+    }
+
+    function refreshCurrentHtmlArtifact(options) {
+      options = options || {};
+      var previousSha = state.htmlArtifactSha256.trim();
+      return resolveCurrentHtmlArtifactFile().then(function(file) {
+        if (!file) {
+          if (options.showStatus) {
+            state.visualEditStatus = 'No durable HTML artifact is selected to refresh.';
+            renderVisualSurfaces();
+          }
+          return false;
+        }
+        return fetchArtifactText(file);
+      }).then(function(result) {
+        if (!result) {
+          if (options.showStatus) {
+            state.visualEditStatus = 'Could not load the selected HTML artifact.';
+            renderVisualSurfaces();
+          }
+          return false;
+        }
+        var nextSha = result.sha256 || fileChecksum(result.file);
+        if ((!nextSha || nextSha === previousSha) && result.text === state.htmlTemplate) {
+          if (options.showStatus) {
+            state.visualEditStatus = nextSha
+              ? 'Artifact is already current at SHA ' + nextSha.slice(0, 12) + '.'
+              : 'Artifact is already current.';
+            renderVisualSurfaces();
+          }
+          return false;
+        }
+        state.htmlTemplate = result.text;
+        state.htmlArtifactPath = filePath(result.file) || state.htmlArtifactPath;
+        state.htmlArtifactFileId = firstString([result.file.id, result.file.workspaceFileId], state.htmlArtifactFileId);
+        state.htmlArtifactSha256 = nextSha;
+        state.visualSelections = [];
+        state.visualEditInFlight = false;
+        state.pendingVisualSelection = null;
+        state.pendingVisualComment = '';
+        state.visualEditStatus = 'Template refreshed from the updated artifact.';
+        state.status = 'Visual edits applied';
+        refreshFields(['htmlTemplate', 'htmlArtifactPath', 'htmlArtifactFileId', 'htmlArtifactSha256']);
+        refreshComputed();
+        return true;
+      }).catch(function(error) {
+        if (options.showStatus) {
+          state.visualEditStatus = error && error.message
+            ? 'Could not refresh the updated artifact: ' + error.message
+            : 'Could not refresh the updated artifact.';
+          renderVisualSurfaces();
+        }
+        return false;
+      });
+    }
+
+    function refreshCurrentHtmlArtifactFromButton() {
+      state.visualEditStatus = 'Refreshing the durable HTML artifact.';
+      renderVisualSurfaces();
+      return refreshCurrentHtmlArtifact({ showStatus: true });
+    }
+
+    function scheduleVisualEditRefresh(submittedSha) {
+      [8000, 20000, 45000].forEach(function(delay) {
+        window.setTimeout(function() {
+          refreshCurrentHtmlArtifact().then(function(refreshed) {
+            var currentSha = state.htmlArtifactSha256.trim();
+            if (!refreshed && delay === 45000 && (!submittedSha || currentSha === submittedSha)) {
+              state.visualEditStatus = 'Visual edit request submitted. The template has not refreshed yet; reload the saved template after the persona reports the new SHA.';
+              renderVisualSurfaces();
+            }
+          });
+        }, delay);
+      });
+    }
+
+    function submitVisualEdits() {
+      if (!window.__tribexAiClient || typeof window.__tribexAiClient.sendMessage !== 'function') {
+        throw new Error('TribeX AI persona messaging is unavailable in this MCPViews session.');
+      }
+      state.visualEditStatus = 'Submitting visual edit request to the email-template-visual-editor persona.';
+      renderVisualSurfaces();
+      setBusy(true, 'Submitting visual edits');
+      var submittedSha = '';
+      return ensureHtmlTemplateArtifactForVisualEdit()
+        .then(function() {
+          submittedSha = state.htmlArtifactSha256.trim();
+          var prompt = buildVisualEditPrompt();
+          state.promptText = prompt;
+          return prompt;
+        })
+        .then(function(prompt) {
+          return ensureVisualEditorThread().then(function(threadId) {
+            return configureVisualEditorRuntime(threadId).then(function(configuredThreadId) {
+              return {
+                prompt: prompt,
+                threadId: configuredThreadId,
+              };
+            });
+          });
+        })
+        .then(function(context) {
+          return window.__tribexAiClient.sendMessage(context.threadId, context.prompt, {
+            displayPrompt: 'Apply visual edits to ' + (state.htmlArtifactPath || state.name || 'email template') + '.',
+            operationId: 'email-template-visual-edit:' + Date.now(),
+            clientMessageId: 'email-template-visual-edit:' + Date.now(),
+            skillInvocation: {
+              key: 'email-template-visual-editor',
+              source: 'mcpviews-email-deliverability-plugin',
+            },
+          });
+        })
+        .then(function(turn) {
+          state.status = 'Visual edit request submitted';
+          state.visualEditInFlight = true;
+          state.visualEditStatus = 'Visual edit request submitted. The builder will try to refresh the template after the persona updates the artifact.';
+          scheduleVisualEditRefresh(submittedSha);
+          renderVisualSurfaces();
+          refreshComputed();
+          if (turn && turn.done && typeof turn.done.then === 'function') {
+            turn.done.catch(function(error) {
+              state.visualEditInFlight = false;
+              state.visualEditStatus = error && error.message
+                ? 'Visual editor failed: ' + error.message
+                : 'Visual editor failed before updating the template.';
+              showError(error);
+            }).then(function() {
+              return refreshCurrentHtmlArtifact().then(function(refreshed) {
+                if (refreshed) return;
+                var currentSha = state.htmlArtifactSha256.trim();
+                if (submittedSha && currentSha && currentSha !== submittedSha) {
+                  state.visualEditInFlight = false;
+                  state.visualEditStatus = 'Template refreshed from the updated artifact.';
+                  renderVisualSurfaces();
+                  return;
+                }
+                state.visualEditInFlight = false;
+                state.visualEditStatus = 'Visual editor finished. The artifact did not refresh automatically yet; use Refresh or reload the saved template if the persona reported a new SHA.';
+                renderVisualSurfaces();
+              });
+            });
+          } else {
+            state.visualEditInFlight = false;
+            renderVisualSurfaces();
+          }
+        })
+        .catch(function(error) {
+          state.visualEditInFlight = false;
+          throw error;
+        })
+        .finally(function() {
+          setBusy(false);
+        });
+    }
+
     function refreshComputed() {
       renderStatus();
       try {
@@ -1435,12 +2596,20 @@
         htmlEl.srcdoc = validation.preview.html
           ? '<!doctype html><html><head><base target="_blank"><style>body{font-family:Arial,sans-serif;font-size:14px;line-height:1.45;color:#111827;padding:12px;}</style></head><body>' + validation.preview.html + '</body></html>'
           : '<!doctype html><html><body style="font-family:Arial,sans-serif;color:#667085;padding:12px;">No HTML template.</body></html>';
+        updateSelectSurface(validation.preview.html || '<p>No HTML template.</p>');
+        htmlEl.classList.toggle('selecting', state.visualSelectMode);
+        if (previewFrameEl) {
+          previewFrameEl.classList.toggle('selecting', state.visualSelectMode);
+          previewFrameEl.classList.toggle('manual-editing', state.manualEditMode);
+        }
         if (promptEl && !state.promptText) promptEl.textContent = '';
+        renderVisualSurfaces();
       } catch (error) {
         variablesEl.innerHTML = '<span class="email-builder-small">Variables unavailable until the draft is valid.</span>';
         subjectEl.textContent = '';
         textEl.textContent = '';
         htmlEl.srcdoc = '';
+        renderVisualSurfaces();
         validationEl.className = 'email-builder-strip email-builder-error';
         validationEl.innerHTML = '<h3>Validation</h3><div class="email-builder-validation-line"><span class="email-builder-dot"></span><span>' + esc(error.message || String(error)) + '</span></div>';
         if (metricVariablesEl) metricVariablesEl.textContent = '--';

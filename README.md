@@ -29,6 +29,11 @@ First staged implementation for deterministic email template and campaign drafti
   - accepted MCPViews review
   - `email_campaign_send_apply`
 - Builds template revision prompts that pass the selected HTML artifact ref and instruct personas to search/read the existing template, then update the same workspace path with an expected SHA-256 guard.
+- Provides AI edit mode for rendered HTML blocks:
+  - select blocks in the preview;
+  - attach compact DOM metadata and a comment;
+  - submit one batch prompt to the plugin-specific `email-template-visual-editor` persona.
+- Provides manual edit mode for direct rendered-text edits, then regenerates the plain text body deterministically from the updated HTML.
 
 Production send execution remains human gated. The plugin never sends production email directly.
 
@@ -117,3 +122,19 @@ On 2026-05-17, after deploying the TribeX AI dev runtime and control plane, a fr
 The preserved path was `email/templates/codex-in-place-revision-smoke.html`; the SHA advanced from `e697ee7753a0d9395928f3aa059bcd84104ed53a602e079685351ecf5cddbf79` to `79f1e40b1dc68bd133fbeed8fd2fb0d63670c0bc6361073ed89fe9ea40025bd0`.
 
 The older `Test2` thread retained stale desktop relay catalog bearer metadata after deployment, so use a fresh authenticated MCPViews AI thread when validating a newly deployed runtime.
+
+## 2026-05-18 Visual Builder Update
+
+The builder now includes a first local slice of the visual HTML editing workflow:
+
+- `email-template-visual-edit-prompt` builds metadata-only visual edit prompts for the stable `email-template-visual-editor` persona.
+- AI edit mode opens a fixed left edit drawer, queues block comments, keeps technical DOM details collapsed by default, and submits one persona-mediated edit batch.
+- Manual edit mode lets users edit text directly in the rendered preview, save those edits back into the HTML source, and sync the plain text preview automatically.
+- Visual edits remain same-path and SHA-guarded. The persona is instructed to use artifact search/update tools and avoid campaign send tools.
+
+Validation for this slice:
+
+```bash
+node --check renderers/email-template-builder.js
+npm test
+```

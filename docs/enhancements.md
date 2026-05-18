@@ -13,7 +13,9 @@ This document tracks technical debt items identified by the solid-reviewer agent
 
 ## Latest Session Summary
 
-**Last Review:** N/A (no commits reviewed yet)
+**Last Review:** 2026-05-18 commit-workflow pass for visual/manual email template editing.
+
+No material SOLID findings remain after fixing the visual editor runtime configuration race. The main residual risk is product-level rather than architectural: the authenticated MCPViews session still needs an end-to-end smoke where the plugin submits a visual edit batch to `email-template-visual-editor`, the persona updates the same artifact path with the expected SHA, and the renderer refreshes the updated HTML.
 
 ---
 

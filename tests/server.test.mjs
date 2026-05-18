@@ -27,6 +27,7 @@ test("lists template utility tools", async () => {
     "email-template-persona-test-prompt",
     "email-campaign-persona-prompt",
     "email-template-persona-revision-prompt",
+    "email-template-visual-edit-prompt",
   ]);
 });
 
@@ -180,4 +181,39 @@ test("builds in-place template revision prompts through tool calls", async () =>
     payload.artifactRef.workspacePath,
     "email/templates/chibigen-ai-startup-template.html",
   );
+});
+
+test("builds metadata-only visual edit prompts through tool calls", async () => {
+  const response = await handleRpc({
+    jsonrpc: "2.0",
+    id: 7,
+    method: "tools/call",
+    params: {
+      name: "email-template-visual-edit-prompt",
+      arguments: {
+        htmlArtifactPath: "email/templates/product-launch.html",
+        htmlArtifactFileId: "file_html",
+        htmlArtifactSha256: "b".repeat(64),
+        selections: [
+          {
+            selector: "body > main:nth-of-type(1) > section:nth-of-type(2)",
+            domPath: "body > main:nth-of-type(1) > section:nth-of-type(2)",
+            tagName: "section",
+            bounds: { x: 12, y: 40, width: 560, height: 120 },
+            visibleText: "The proof section",
+            outerHTML: "<section><h2>Proof</h2></section>",
+            snippetHash: "c".repeat(64),
+            changeRequest: "Make this proof section more CFO-oriented.",
+          },
+        ],
+      },
+    },
+  });
+  const payload = JSON.parse(response.body.result.content[0].text);
+  assert.equal(payload.targetPersonaKey, "email-template-visual-editor");
+  assert.match(payload.prompt, /metadata-only selected block context/);
+  assert.match(payload.prompt, /email_template_artifact_update/);
+  assert.match(payload.prompt, /Do not call email_template_artifact_create/);
+  assert.equal(payload.selections[0].changeRequest, "Make this proof section more CFO-oriented.");
+  assert.equal(payload.artifactRef.workspacePath, "email/templates/product-launch.html");
 });

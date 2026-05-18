@@ -11,8 +11,8 @@ This document maps all test files to their corresponding source code and describ
 ## Unit Tests
 
 - `tests/template-engine.test.mjs` covers deterministic placeholder extraction, rendering, missing-variable blocking, one-row test campaign payload construction, artifact-backed campaign payloads, runtime campaign draft artifact normalization, draft artifact metadata, single-test prompt safety wording, and approval-gated campaign prompt wording.
-- `tests/server.test.mjs` covers the local MCP initialize/tools-list flow, prompt schemas for artifact-backed drafts without raw audience rows, prefixed tool-call normalization, renderer payload normalization for runtime draft artifacts, validation output, campaign prompt tool output, and JSON-RPC error behavior for unsafe prompt payloads.
-- `node --check renderers/email-template-builder.js` covers renderer syntax for the browser-side guided org/workspace/template picker, simplified template editor, deterministic HTML-to-text preview flow, large HTML preview, and advanced artifact search/load flow.
+- `tests/server.test.mjs` covers the local MCP initialize/tools-list flow, prompt schemas for artifact-backed drafts without raw audience rows, prefixed tool-call normalization, renderer payload normalization for runtime draft artifacts, validation output, campaign prompt tool output, metadata-only visual edit prompt output, and JSON-RPC error behavior for unsafe prompt payloads.
+- `node --check renderers/email-template-builder.js` covers renderer syntax for the browser-side guided org/workspace/template picker, simplified template editor, deterministic HTML-to-text preview flow, large HTML preview, advanced artifact search/load flow, AI edit mode, visual edit chat, comment modal, and manual rendered-text edit mode.
 
 ---
 
@@ -32,5 +32,7 @@ _(No tests yet. Tests will be documented here as they are created.)_
 
 ### Pre-Commit Check
 
+- 2026-05-18 `node --check renderers/email-template-builder.js` passed.
+- 2026-05-18 `npm test` passed with 20 tests.
 - 2026-05-17 `npm test` passed with 18 tests.
 - 2026-05-17 `npm run check` passed for `src/*.mjs` and `tests/*.mjs`.

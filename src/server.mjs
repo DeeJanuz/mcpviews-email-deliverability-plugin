@@ -9,6 +9,7 @@ import {
 import {
   buildPersonaCampaignPrompt,
   buildPersonaTemplateRevisionPrompt,
+  buildPersonaTemplateVisualEditPrompt,
   buildPersonaTestPrompt,
   normalizeDraftInput,
   validateDraft,
@@ -121,6 +122,26 @@ const TOOL_DEFINITIONS = [
       required: ["revisionRequest"],
     },
   },
+  {
+    name: "email-template-visual-edit-prompt",
+    description:
+      "Build a batch visual-edit prompt for the plugin-specific email-template-visual-editor persona using metadata-only selected HTML blocks.",
+    inputSchema: {
+      type: "object",
+      additionalProperties: true,
+      properties: {
+        selections: { type: "array", items: { type: "object" }, minItems: 1 },
+        htmlArtifactPath: { type: "string" },
+        htmlArtifactFileId: { type: "string" },
+        htmlArtifactSha256: { type: "string" },
+        workspacePath: { type: "string" },
+        workspaceFileId: { type: "string" },
+        sha256: { type: "string" },
+        draft: { type: "object", additionalProperties: true },
+      },
+      required: ["selections"],
+    },
+  },
 ];
 
 function jsonRpcResult(id, result) {
@@ -227,6 +248,16 @@ async function handleToolCall(name, args = {}) {
       buildPersonaTemplateRevisionPrompt(draft, {
         revisionRequest: args.revisionRequest,
         searchQuery: args.searchQuery,
+        htmlArtifactPath: args.htmlArtifactPath,
+        htmlArtifactFileId: args.htmlArtifactFileId,
+        htmlArtifactSha256: args.htmlArtifactSha256,
+      }),
+    );
+  }
+  if (toolName === "email-template-visual-edit-prompt") {
+    const draft = args.draft && typeof args.draft === "object" ? args.draft : args;
+    return toolResult(
+      buildPersonaTemplateVisualEditPrompt(draft, {
         htmlArtifactPath: args.htmlArtifactPath,
         htmlArtifactFileId: args.htmlArtifactFileId,
         htmlArtifactSha256: args.htmlArtifactSha256,

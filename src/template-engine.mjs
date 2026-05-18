@@ -653,6 +653,113 @@ export function buildPersonaTemplateRevisionPrompt(input, options = {}) {
   };
 }
 
+function normalizeVisualSelection(value, index) {
+  if (!isRecord(value)) {
+    throw new Error(`Visual selection ${index + 1} must be an object.`);
+  }
+  const changeRequest = stringValue(value.changeRequest || value.instruction);
+  if (!changeRequest) {
+    throw new Error(`Visual selection ${index + 1} requires a changeRequest.`);
+  }
+  return dropUndefined({
+    index: index + 1,
+    selector: stringValue(value.selector),
+    domPath: stringValue(value.domPath),
+    tagName: stringValue(value.tagName),
+    bounds: isRecord(value.bounds) ? value.bounds : undefined,
+    visibleText: stringValue(value.visibleText).slice(0, 500),
+    outerHTML: stringValue(value.outerHTML).slice(0, 2000),
+    snippetHash: stringValue(value.snippetHash).replace(/^sha256:/i, ""),
+    changeRequest,
+  });
+}
+
+export function buildPersonaTemplateVisualEditPrompt(input, options = {}) {
+  const raw = isRecord(input) ? input : {};
+  const draft = normalizeDraftInput(raw.draft || raw);
+  const artifactPath = stringValue(
+    options.htmlArtifactPath || raw.htmlArtifactPath || draft.htmlArtifactPath || raw.workspacePath,
+  );
+  const artifactFileId = stringValue(
+    options.htmlArtifactFileId ||
+      raw.htmlArtifactFileId ||
+      draft.htmlArtifactFileId ||
+      raw.workspaceFileId,
+  );
+  const artifactSha256 = stringValue(
+    options.htmlArtifactSha256 ||
+      raw.htmlArtifactSha256 ||
+      draft.htmlArtifactSha256 ||
+      raw.sha256,
+  ).replace(/^sha256:/i, "");
+  const selections = Array.isArray(raw.selections)
+    ? raw.selections.map(normalizeVisualSelection)
+    : [];
+  if (!artifactPath) {
+    throw new Error("A selected HTML artifact workspacePath is required for visual edits.");
+  }
+  if (!artifactSha256) {
+    throw new Error("A selected HTML artifact sha256 is required for visual edits.");
+  }
+  if (!selections.length) {
+    throw new Error("At least one visual selection is required.");
+  }
+  const artifactRef = dropUndefined({
+    source: "workspace_file",
+    format: "html",
+    workspacePath: artifactPath,
+    workspaceFileId: artifactFileId,
+    sha256: artifactSha256,
+  });
+  const payload = {
+    targetPersonaKey: "email-template-visual-editor",
+    artifactRef,
+    selections,
+    constraints: {
+      updateSameWorkspacePath: true,
+      expectedSha256: artifactSha256,
+      metadataOnlySelectionContext: true,
+      screenshotsIncluded: false,
+      forbiddenTools: [
+        "email_template_artifact_create",
+        "email_campaign_prepare",
+        "email_campaign_preview",
+        "email_campaign_test_send",
+        "email_campaign_review_propose",
+        "email_campaign_send_apply",
+      ],
+    },
+  };
+  const prompt = [
+    "Route this request to the plugin-specific system persona with stable key `email-template-visual-editor` when that persona is available.",
+    "",
+    "Apply a batch visual edit to one existing durable HTML email template artifact.",
+    "",
+    "Use only these artifact tools:",
+    "1. email_template_artifact_search with includeContent=true to read the current artifact.",
+    "2. email_template_artifact_update with the exact same workspacePath and expectedSha256.",
+    "",
+    "Do not call email_template_artifact_create.",
+    "Do not create a copy or variant unless the user explicitly asks for one.",
+    "Do not call campaign prepare, preview, test send, review, or production send tools.",
+    "Preserve safe email HTML: no scripts, event handlers, javascript: URLs, forms, tracking pixels, or remote code.",
+    "Use the metadata-only selected block context to target the requested blocks, but update the full HTML artifact once.",
+    "Return workspacePath, workspaceFileId, previousSha256, new sha256, variables, and a short edit summary.",
+    "",
+    "Visual edit payload:",
+    "```json",
+    JSON.stringify(payload, null, 2),
+    "```",
+  ].join("\n");
+
+  return {
+    prompt,
+    targetPersonaKey: "email-template-visual-editor",
+    artifactRef,
+    selections,
+  };
+}
+
 export function slugify(value) {
   const slug = String(value || "email-template")
     .toLowerCase()
