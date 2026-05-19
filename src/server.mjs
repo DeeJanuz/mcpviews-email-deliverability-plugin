@@ -255,9 +255,8 @@ async function handleToolCall(name, args = {}) {
     );
   }
   if (toolName === "email-template-visual-edit-prompt") {
-    const draft = args.draft && typeof args.draft === "object" ? args.draft : args;
     return toolResult(
-      buildPersonaTemplateVisualEditPrompt(draft, {
+      buildPersonaTemplateVisualEditPrompt(args, {
         htmlArtifactPath: args.htmlArtifactPath,
         htmlArtifactFileId: args.htmlArtifactFileId,
         htmlArtifactSha256: args.htmlArtifactSha256,

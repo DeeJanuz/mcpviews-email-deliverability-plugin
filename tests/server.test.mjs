@@ -217,3 +217,40 @@ test("builds metadata-only visual edit prompts through tool calls", async () => 
   assert.equal(payload.selections[0].changeRequest, "Make this proof section more CFO-oriented.");
   assert.equal(payload.artifactRef.workspacePath, "email/templates/product-launch.html");
 });
+
+test("builds visual edit prompts from nested draft artifacts and top-level selections", async () => {
+  const response = await handleRpc({
+    jsonrpc: "2.0",
+    id: 8,
+    method: "tools/call",
+    params: {
+      name: "email-template-visual-edit-prompt",
+      arguments: {
+        draft: {
+          htmlTemplateArtifactRef: {
+            source: "workspace_file",
+            format: "html",
+            workspacePath: "email/templates/nested-product-launch.html",
+            workspaceFileId: "file_nested_html",
+            sha256: "d".repeat(64),
+          },
+        },
+        selections: [
+          {
+            selector: "body > table:nth-of-type(1)",
+            domPath: "body > table:nth-of-type(1)",
+            tagName: "table",
+            visibleText: "Nested draft selection",
+            outerHTML: "<table><tr><td>Nested draft selection</td></tr></table>",
+            snippetHash: "e".repeat(64),
+            changeRequest: "Tighten the nested draft hero copy.",
+          },
+        ],
+      },
+    },
+  });
+  const payload = JSON.parse(response.body.result.content[0].text);
+  assert.equal(payload.artifactRef.workspacePath, "email/templates/nested-product-launch.html");
+  assert.equal(payload.artifactRef.sha256, "d".repeat(64));
+  assert.equal(payload.selections[0].changeRequest, "Tighten the nested draft hero copy.");
+});
