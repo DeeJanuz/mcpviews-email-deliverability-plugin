@@ -8,18 +8,17 @@ First staged implementation for deterministic email template and campaign drafti
 - Extracts `{{variable}}` placeholders using the same grammar as `tribe-x-ai`.
 - Validates a normalized JSON sample audience.
 - Renders deterministic subject, text, and sandboxed HTML previews.
-- Saves a portable JSON draft artifact to TribeX AI durable workspace storage when opened with a workspace id or resolvable thread id.
-- Shows a guided start flow: select a TribeX organization, resolve/select a workspace, then load a saved template/campaign draft or create a new draft.
+- Saves reusable template artifacts to TribeX AI durable workspace storage when opened with a workspace id or resolvable thread id.
+- Shows a guided start flow: select a TribeX organization, resolve/select a workspace, then load a saved template or create a new draft.
 - Keeps the default editor focused on template creation: name, key, subject, HTML source, variables, large HTML preview, and save.
 - Derives the plain text body deterministically from the HTML template; personas do not need to author a separate text template.
-- Opens campaign draft outputs created by TribeX runtime tools:
+- Opens email template outputs created by TribeX runtime tools:
   - `email_template_artifact_create`
   - `email_template_artifact_search`
   - `email_template_artifact_update`
-  - `email_campaign_draft_artifact_create`
-- Treats those runtime artifact tools as sandbox-write-gated; personas must have brokered `sandbox_fs_write` plus the specific email artifact grant.
-- Shows workspace artifact refs and hashes for HTML templates, audience files, and campaign drafts.
-- Searches TribeX AI durable workspace storage by path under `email/` and loads HTML template, audience, or campaign draft artifacts into the builder.
+- Treats template authoring runtime tools as sandbox-write-gated; personas must have brokered `sandbox_fs_write` plus the specific email artifact grant.
+- Shows workspace artifact refs and hashes for HTML templates and audience files. Campaign drafts are database records created by `email_campaign_prepare`.
+- Searches TribeX AI durable workspace storage by path under `email/` and loads HTML template or audience artifacts into the builder.
 - Asks a TribeX AI persona to run exactly one test-send flow through:
   - `email_campaign_prepare`
   - `email_campaign_preview`
@@ -28,6 +27,9 @@ First staged implementation for deterministic email template and campaign drafti
   - `email_campaign_review_propose`
   - accepted MCPViews review
   - `email_campaign_send_apply`
+- Lets manual campaign launcher users approve and schedule from the plugin UI without a separate MCPViews review callback.
+- Adds an explicit Refresh Status button in the campaign launcher status step.
+- Opens an `email_campaign_history` renderer for database-backed campaign history, send timing, opens, opt-outs, link clicks, and bounces.
 - Builds template revision prompts that pass the selected HTML artifact ref and instruct personas to search/read the existing template, then update the same workspace path with an expected SHA-256 guard.
 - Provides AI edit mode for rendered HTML blocks:
   - select blocks in the preview;
@@ -35,7 +37,7 @@ First staged implementation for deterministic email template and campaign drafti
   - submit one batch prompt to the plugin-specific `email-template-visual-editor` persona.
 - Provides manual edit mode for direct rendered-text edits, then regenerates the plain text body deterministically from the updated HTML.
 
-Production send execution remains human gated. The plugin never sends production email directly.
+Production send execution remains human gated. The plugin never sends production email directly. Campaign history is read-only and loads platform-owned analytics records.
 
 Campaign sender, audience, DecidR, artifact hash, and persona handoff details are intentionally kept out of the default template-editing view. They remain platform concerns for the campaign workflow rather than primary fields for template creation.
 
@@ -44,6 +46,7 @@ Campaign sender, audience, DecidR, artifact hash, and persona handoff details ar
 ```bash
 npm run check
 npm test
+bash build.sh
 node src/server.mjs
 ```
 
@@ -54,6 +57,15 @@ http://127.0.0.1:4885/mcp
 ```
 
 Install `manifest.json` in MCPViews as a local plugin while developing.
+
+## Release
+
+The public plugin release flow mirrors the DecidR plugin:
+
+1. Add release copy to `RELEASE_NOTES.md` and `docs/RELEASE_NOTES.md`.
+2. Bump `manifest.json` and `package.json`.
+3. Run `bash build.sh` to refresh `manifest.json.download_url` and create `release/email-deliverability.zip`.
+4. Push `master`; GitHub Actions verifies, rebuilds, creates the versioned release asset, and clears `RELEASE_NOTES.md`.
 
 ## Renderer Payload
 
@@ -81,20 +93,19 @@ Use `push_content` with `tool_name: "email_template_builder"`:
 
 The test-send action requires both a thread id and workspace id. If only a thread id is supplied, the renderer attempts to resolve the workspace from the TribeX AI thread before saving.
 
-The renderer and persona prompt tools also accept the output of `email_campaign_draft_artifact_create` as `draft`; they normalize the nested `campaignPreparePayload`, `campaignDraftArtifactRef`, `htmlTemplateArtifactRef`, and `audienceArtifactRef` into campaign builder fields without requiring raw audience rows.
+The renderer and persona prompt tools accept template and audience artifact refs as durable inputs. Once `email_campaign_prepare` succeeds, the resulting campaign database record is the draft campaign source of truth.
 
 ## Guided Start Flow
 
 When the builder opens inside an authenticated MCPViews AI session, it uses `window.__tribexAiClient` to discover available organizations. If it has a thread id, it first resolves the thread to its organization, workspace, and project context. The first visible controls are:
 
 1. Select org.
-2. Select a saved template or campaign draft.
+2. Select a saved template.
 3. Create new.
 
 Saved template choices are loaded from durable workspace storage under:
 
 - `email/templates/`
-- `email/campaigns/`
 - `email/deliverability/templates/`
 
 The lower workspace artifact search remains available for targeted path lookup, but the guided picker is the primary workflow.
@@ -105,11 +116,10 @@ When opened with a `workspace_id`, or with a `thread_id` that can resolve to a w
 
 - `email/`
 - `email/templates/`
-- `email/campaigns/`
 - `email/audiences/`
 - `email/templates/my-template.html`
 
-Loading an HTML artifact fills the HTML editor and preserves its workspace ref/hash for prepare. Loading a campaign draft JSON artifact fills the campaign fields and attempts to pull the referenced HTML template for preview. Loading an audience artifact fills the audience ref fields and previews JSON rows when possible.
+Loading an HTML artifact fills the HTML editor and preserves its workspace ref/hash for prepare. Loading an audience artifact fills the audience ref fields and previews JSON rows when possible. Prepared campaign drafts are opened from the database-backed draft library in the campaign launcher.
 
 ## Latest Dev Smoke
 

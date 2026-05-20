@@ -33,6 +33,38 @@ const TOOL_DEFINITIONS = [
     },
   },
   {
+    name: "email-campaign-launcher-open",
+    description:
+      "Return a lightweight payload for opening the MCPViews manual email campaign launcher renderer.",
+    inputSchema: {
+      type: "object",
+      additionalProperties: true,
+      properties: {
+        threadId: { type: "string" },
+        workspaceId: { type: "string" },
+        projectId: { type: "string" },
+        organizationId: { type: "string" },
+        draft: { type: "object", additionalProperties: true },
+      },
+    },
+  },
+  {
+    name: "email-campaign-history-open",
+    description:
+      "Return a lightweight payload for opening the MCPViews email campaign history renderer.",
+    inputSchema: {
+      type: "object",
+      additionalProperties: true,
+      properties: {
+        threadId: { type: "string" },
+        workspaceId: { type: "string" },
+        projectId: { type: "string" },
+        organizationId: { type: "string" },
+        draft: { type: "object", additionalProperties: true },
+      },
+    },
+  },
+  {
     name: "email-template-payload-validate",
     description:
       "Validate explicit email template placeholders against normalized JSON audience rows.",
@@ -97,7 +129,6 @@ const TOOL_DEFINITIONS = [
         workspacePath: { type: "string" },
         workspaceFileId: { type: "string" },
         campaignPreparePayload: { type: "object", additionalProperties: true },
-        campaignDraftArtifactRef: { type: "object", additionalProperties: true },
       },
     },
   },
@@ -211,10 +242,42 @@ function builderPayload(args) {
   };
 }
 
+function launcherPayload(args) {
+  const draft = normalizeDraftInput(
+    args.draft && typeof args.draft === "object" ? args.draft : {},
+  );
+  return {
+    renderer: "email_campaign_launcher",
+    thread_id: args.thread_id || args.threadId || "",
+    workspace_id: args.workspace_id || args.workspaceId || "",
+    project_id: args.project_id || args.projectId || "",
+    organization_id: args.organization_id || args.organizationId || "",
+    draft,
+  };
+}
+
+function historyPayload(args) {
+  const draft = args.draft && typeof args.draft === "object" ? args.draft : {};
+  return {
+    renderer: "email_campaign_history",
+    thread_id: args.thread_id || args.threadId || "",
+    workspace_id: args.workspace_id || args.workspaceId || "",
+    project_id: args.project_id || args.projectId || "",
+    organization_id: args.organization_id || args.organizationId || "",
+    draft,
+  };
+}
+
 async function handleToolCall(name, args = {}) {
   const toolName = normalizeToolName(name);
   if (toolName === "email-template-builder-open") {
     return toolResult(builderPayload(args));
+  }
+  if (toolName === "email-campaign-launcher-open") {
+    return toolResult(launcherPayload(args));
+  }
+  if (toolName === "email-campaign-history-open") {
+    return toolResult(historyPayload(args));
   }
   if (toolName === "email-template-payload-validate") {
     return toolResult(validateDraft(args));

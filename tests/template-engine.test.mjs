@@ -95,6 +95,42 @@ test("builds an artifact-backed campaign payload for approval-gated sends", () =
   assert.equal(payload.htmlTemplateArtifactRef.workspacePath, "email/templates/renewal.html");
 });
 
+test("preserves deterministic audience filter metadata in campaign payloads", () => {
+  const filterSpec = {
+    combine: "all",
+    predicates: [
+      {
+        mode: "include",
+        fieldPath: "company.plan",
+        operator: "equals",
+        value: "pro",
+      },
+    ],
+  };
+  const filterCounts = {
+    source: 3,
+    filtered: 1,
+    excluded: 2,
+    invalid: 0,
+  };
+  const payload = buildCampaignPayload(
+    {
+      ...baseDraft,
+      audienceArtifactPath: "email/audiences/filtered/renewal.audience.json",
+      audienceArtifactFormat: "json",
+      audienceFilterSpec: filterSpec,
+      audienceFilterHash: "filter_hash",
+      audienceFilterCounts: filterCounts,
+    },
+    { testOnly: false },
+  );
+  assert.deepEqual(payload.audienceFilterSpec, filterSpec);
+  assert.equal(payload.audienceFilterHash, "filter_hash");
+  assert.deepEqual(payload.audienceFilterCounts, filterCounts);
+  assert.deepEqual(payload.metadata.audienceFilterSpec, filterSpec);
+  assert.equal(payload.metadata.audienceFilterHash, "filter_hash");
+});
+
 test("builds a workspace artifact with provenance and forbidden production tools", () => {
   const artifact = buildDraftArtifact(baseDraft, {
     workspaceId: "workspace_1",
@@ -152,15 +188,8 @@ test("builds an in-place template revision prompt with artifact hash guard", () 
   );
 });
 
-test("normalizes runtime campaign draft artifact output for approval-gated prompts", () => {
+test("normalizes runtime campaign prepare payload output for approval-gated prompts", () => {
   const runtimeDraft = {
-    campaignDraftArtifactRef: {
-      source: "workspace_file",
-      format: "json",
-      workspacePath: "email/campaigns/renewal.campaign.json",
-      workspaceFileId: "file_campaign",
-      sha256: "campaign_hash",
-    },
     campaignPreparePayload: {
       name: "Renewal notice",
       fromEmail: "hello@example.com",
@@ -184,7 +213,7 @@ test("normalizes runtime campaign draft artifact output for approval-gated promp
   };
 
   const normalized = normalizeDraftInput(runtimeDraft);
-  assert.equal(normalized.workspacePath, "email/campaigns/renewal.campaign.json");
+  assert.equal(normalized.workspacePath, undefined);
   assert.equal(normalized.htmlArtifactPath, "email/templates/renewal.html");
   assert.equal(normalized.audienceArtifactPath, "email/audiences/renewal.audience.json");
 

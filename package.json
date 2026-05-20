@@ -1,12 +1,13 @@
 {
   "name": "mcpviews-email-deliverability-plugin",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "MCPViews email deliverability plugin for deterministic campaign drafting, artifact-backed preview, workspace persistence, persona-mediated test sends, and approval-gated campaign sends.",
   "type": "module",
   "private": true,
   "scripts": {
     "start": "node src/server.mjs",
-    "check": "node --check src/*.mjs && node --check tests/*.mjs",
+    "check": "node --check src/*.mjs && node --check tests/*.mjs && node --check renderers/*.js",
+    "build": "bash build.sh",
     "test": "node --test tests/*.test.mjs"
   },
   "keywords": [

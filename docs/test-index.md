@@ -10,9 +10,12 @@ This document maps all test files to their corresponding source code and describ
 
 ## Unit Tests
 
-- `tests/template-engine.test.mjs` covers deterministic placeholder extraction, rendering, missing-variable blocking, one-row test campaign payload construction, artifact-backed campaign payloads, runtime campaign draft artifact normalization, draft artifact metadata, single-test prompt safety wording, and approval-gated campaign prompt wording.
-- `tests/server.test.mjs` covers the local MCP initialize/tools-list flow, prompt schemas for artifact-backed drafts without raw audience rows, prefixed tool-call normalization, renderer payload normalization for runtime draft artifacts, validation output, campaign prompt tool output, metadata-only visual edit prompt output, and JSON-RPC error behavior for unsafe prompt payloads.
+- `tests/template-engine.test.mjs` covers deterministic placeholder extraction, rendering, missing-variable blocking, one-row test campaign payload construction, artifact-backed campaign payloads, runtime prepare payload normalization, single-test prompt safety wording, and approval-gated campaign prompt wording.
+- `tests/server.test.mjs` covers the local MCP initialize/tools-list flow, prompt schemas for artifact-backed templates/audiences without raw audience rows, prefixed tool-call normalization, renderer payload normalization for runtime prepare payloads, campaign launcher and campaign history payloads, validation output, campaign prompt tool output, metadata-only visual edit prompt output, and JSON-RPC error behavior for unsafe prompt payloads.
+- `tests/manifest.test.mjs` covers standalone renderer registration for Email Templates, Email Campaigns, and Campaign History plus renderer source expectations for context discovery, status refresh, and campaign history platform calls.
 - `node --check renderers/email-template-builder.js` covers renderer syntax for the browser-side guided org/workspace/template picker, simplified template editor, deterministic HTML-to-text preview flow, large HTML preview, advanced artifact search/load flow, AI edit mode, visual edit chat, comment modal, and manual rendered-text edit mode.
+- `node --check renderers/email-campaign-launcher.js` covers renderer syntax for the manual campaign wizard, database draft library, plugin UI approval scheduling, and explicit status refresh.
+- `node --check renderers/email-campaign-history.js` covers renderer syntax for campaign history, roll-up stats, status filtering, and read-only platform history loading.
 
 ---
 

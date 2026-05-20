@@ -1,0 +1,137 @@
+{
+  "schemaVersion": "tribex.emailAudience.v1",
+  "kind": "email-campaign-audience",
+  "name": "Manual Campaign Test Audience",
+  "description": "Small deterministic audience for exercising MCPViews campaign filtering, preview, test send, and organization-scoped opt-out handling.",
+  "rowCount": 4,
+  "metadata": {
+    "source": "mcpviews-email-deliverability-plugin-fixture",
+    "purpose": "manual-campaign-launcher-smoke-test",
+    "createdFor": "email_campaign_launcher",
+    "optOutSignal": {
+      "required": true,
+      "scope": "organization",
+      "controlPlaneModel": "EmailSuppression",
+      "reason": "UNSUBSCRIBE",
+      "source": "list-unsubscribe"
+    }
+  },
+  "rows": [
+    {
+      "email": "daenonjjanis@gmail.com",
+      "emailAddress": "daenonjjanis@gmail.com",
+      "first_name": "Daenon1",
+      "last_name": "Janis1",
+      "full_name": "Daenon1 Janis1",
+      "company": "TribeX Test 1",
+      "custom_note": "Your founder cohort is queued for a Chibigen AI startup preview.",
+      "account_type": "test",
+      "campaign_eligible": true,
+      "metadata": {
+        "segment": "founder",
+        "cohort": "alpha",
+        "region": "mountain",
+        "score": 96,
+        "company": "TribeX Test 1",
+        "crm": {
+          "tier": "gold",
+          "lifecycle_stage": "active",
+          "owner": "manual-launcher"
+        }
+      },
+      "consent": {
+        "emailOptOut": false,
+        "optOutRequired": true,
+        "optOutScope": "organization",
+        "optOutPersistence": "tribex-control-plane-email-suppression"
+      }
+    },
+    {
+      "email": "deej@ludflow.com",
+      "emailAddress": "deej@ludflow.com",
+      "first_name": "Daenon2",
+      "last_name": "Janis2",
+      "full_name": "Daenon2 Janis2",
+      "company": "Ludflow",
+      "custom_note": "Your operator cohort is queued for a Chibigen AI startup preview.",
+      "account_type": "test",
+      "campaign_eligible": true,
+      "metadata": {
+        "segment": "operator",
+        "cohort": "beta",
+        "region": "west",
+        "score": 88,
+        "company": "Ludflow",
+        "crm": {
+          "tier": "silver",
+          "lifecycle_stage": "active",
+          "owner": "manual-launcher"
+        }
+      },
+      "consent": {
+        "emailOptOut": false,
+        "optOutRequired": true,
+        "optOutScope": "organization",
+        "optOutPersistence": "tribex-control-plane-email-suppression"
+      }
+    },
+    {
+      "email": "daenonjanis8@gmail.com",
+      "emailAddress": "daenonjanis8@gmail.com",
+      "first_name": "Daenon3",
+      "last_name": "Janis3",
+      "full_name": "Daenon3 Janis3",
+      "company": "TribeX Test 3",
+      "custom_note": "Your control cohort is queued for a Chibigen AI startup preview.",
+      "account_type": "test",
+      "campaign_eligible": true,
+      "metadata": {
+        "segment": "founder",
+        "cohort": "control",
+        "region": "mountain",
+        "score": 72,
+        "company": "TribeX Test 3",
+        "crm": {
+          "tier": "bronze",
+          "lifecycle_stage": "dormant",
+          "owner": "manual-launcher"
+        }
+      },
+      "consent": {
+        "emailOptOut": false,
+        "optOutRequired": true,
+        "optOutScope": "organization",
+        "optOutPersistence": "tribex-control-plane-email-suppression"
+      }
+    },
+    {
+      "email": "sorenofdawn@gmail.com",
+      "emailAddress": "sorenofdawn@gmail.com",
+      "first_name": "Daenon4",
+      "last_name": "Janis4",
+      "full_name": "Daenon4 Janis4",
+      "company": "Dawn Test",
+      "custom_note": "Your creative cohort is queued for a Chibigen AI startup preview.",
+      "account_type": "test",
+      "campaign_eligible": true,
+      "metadata": {
+        "segment": "creative",
+        "cohort": "beta",
+        "region": "north",
+        "score": 91,
+        "company": "Dawn Test",
+        "crm": {
+          "tier": "gold",
+          "lifecycle_stage": "active",
+          "owner": "manual-launcher"
+        }
+      },
+      "consent": {
+        "emailOptOut": false,
+        "optOutRequired": true,
+        "optOutScope": "organization",
+        "optOutPersistence": "tribex-control-plane-email-suppression"
+      }
+    }
+  ]
+}

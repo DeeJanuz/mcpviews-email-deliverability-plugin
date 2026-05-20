@@ -1,0 +1,70 @@
+name: Release
+
+on:
+  push:
+    branches: [master]
+    paths: [manifest.json]
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Check version change
+        id: version
+        run: |
+          CURRENT=$(python3 -c "import json; print(json.load(open('manifest.json'))['version'])")
+          PREVIOUS=$(git show HEAD~1:manifest.json 2>/dev/null | python3 -c "import json,sys; print(json.load(sys.stdin)['version'])" 2>/dev/null || echo "")
+          echo "current=$CURRENT" >> "$GITHUB_OUTPUT"
+          if [ "$CURRENT" != "$PREVIOUS" ]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Verify plugin
+        if: steps.version.outputs.changed == 'true'
+        run: |
+          npm run check
+          npm test
+
+      - name: Build plugin
+        if: steps.version.outputs.changed == 'true'
+        run: bash build.sh
+
+      - name: Create release
+        if: steps.version.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="${{ steps.version.outputs.current }}"
+          BODY=$(sed '1{/^# Unreleased$/d;}' RELEASE_NOTES.md | sed '/^$/d')
+          if [ -n "$BODY" ]; then
+            gh release create "$VERSION" release/email-deliverability.zip \
+              --title "$VERSION" \
+              --notes "$BODY"
+          else
+            gh release create "$VERSION" release/email-deliverability.zip \
+              --title "$VERSION" \
+              --generate-notes
+          fi
+
+      - name: Clear release notes
+        if: steps.version.outputs.changed == 'true'
+        run: |
+          echo "# Unreleased" > RELEASE_NOTES.md
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add RELEASE_NOTES.md
+          git commit -m "chore: clear release notes after ${{ steps.version.outputs.current }}"
+          git push

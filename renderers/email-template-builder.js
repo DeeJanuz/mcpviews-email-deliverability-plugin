@@ -267,15 +267,11 @@
       normalizeArtifactRef(raw.audienceArtifactRef, 'json') ||
       normalizeArtifactRef(prepare.audienceArtifactRef, 'json') ||
       normalizeArtifactRef(metadata.audienceArtifactRef, 'json');
-    var campaignDraftRef =
-      normalizeArtifactRef(raw.campaignDraftArtifactRef, 'json') ||
-      normalizeArtifactRef(metadata.campaignDraftArtifactRef, 'json');
     var merged = compactObject(Object.assign({}, raw, prepare, {
       testTo: raw.testTo || prepare.testTo,
       sampleVariables: raw.sampleVariables || metadata.sampleVariables,
       htmlTemplateArtifactRef: htmlRef,
       audienceArtifactRef: audienceRef,
-      campaignDraftArtifactRef: campaignDraftRef,
       htmlArtifactPath: htmlRef && htmlRef.workspacePath || raw.htmlArtifactPath,
       htmlArtifactFileId: htmlRef && htmlRef.workspaceFileId || raw.htmlArtifactFileId,
       htmlArtifactSha256: htmlRef && htmlRef.sha256 || raw.htmlArtifactSha256,
@@ -283,9 +279,6 @@
       audienceArtifactFileId: audienceRef && audienceRef.workspaceFileId || raw.audienceArtifactFileId,
       audienceArtifactFormat: audienceRef && audienceRef.format || raw.audienceArtifactFormat || 'json',
       audienceArtifactSha256: audienceRef && audienceRef.sha256 || raw.audienceArtifactSha256,
-      workspacePath: campaignDraftRef && campaignDraftRef.workspacePath || raw.workspacePath || raw.relativePath,
-      workspaceFileId: campaignDraftRef && campaignDraftRef.workspaceFileId || raw.workspaceFileId || raw.fileId,
-      workspaceSha256: campaignDraftRef && campaignDraftRef.sha256 || raw.workspaceSha256 || raw.sha256,
     }));
     delete merged.campaignPreparePayload;
     return merged;
@@ -428,8 +421,8 @@
       'Do not modify the templates, audience row, sender, or test recipient after preparation.',
       '',
       artifact && artifact.workspacePath
-        ? 'Workspace draft artifact: ' + artifact.workspacePath
-        : 'Workspace draft artifact: not provided.',
+        ? 'Workspace template artifact: ' + artifact.workspacePath
+        : 'Workspace template artifact: not provided.',
       '',
       'email_campaign_prepare payload:',
       '```json',
@@ -465,8 +458,8 @@
       'Do not include raw rendered body content or recipient emails in the final summary.',
       '',
       artifact && artifact.workspacePath
-        ? 'Workspace draft artifact: ' + artifact.workspacePath
-        : 'Workspace draft artifact: not provided.',
+        ? 'Workspace template artifact: ' + artifact.workspacePath
+        : 'Workspace template artifact: not provided.',
       '',
       'email_campaign_prepare payload:',
       '```json',
@@ -530,7 +523,7 @@
 
   function artifactKindLabel(kind) {
     if (kind === 'html') return 'HTML template';
-    if (kind === 'campaign') return 'Campaign draft';
+    if (kind === 'campaign') return 'Legacy campaign artifact';
     if (kind === 'audience') return 'Audience';
     if (kind === 'json') return 'Email JSON';
     return 'File';
@@ -629,23 +622,6 @@
       htmlTemplate: template.htmlTemplate,
       audience: value.sampleAudience,
       testTo: personaTest.testTo || campaignWorkflow.testTo,
-    });
-  }
-
-  function draftFromCampaignArtifact(value, file, sha256) {
-    if (!isRecord(value)) return null;
-    if (value.schemaVersion !== 'tribex.emailCampaignDraft.v1' && !isRecord(value.campaignPreparePayload)) {
-      return null;
-    }
-    var ref = workspaceFileRef(file, 'json', sha256);
-    var prepare = isRecord(value.campaignPreparePayload)
-      ? Object.assign({}, value.campaignPreparePayload)
-      : {};
-    var metadata = isRecord(prepare.metadata) ? Object.assign({}, prepare.metadata) : {};
-    prepare.metadata = Object.assign(metadata, { campaignDraftArtifactRef: ref });
-    return Object.assign({}, value, {
-      campaignDraftArtifactRef: ref,
-      campaignPreparePayload: prepare,
     });
   }
 
@@ -765,6 +741,8 @@
   function injectStyles() {
     var existing = document.getElementById('email-template-builder-styles');
     if (existing && existing.parentNode) existing.parentNode.removeChild(existing);
+    var selectChevronDark = 'url("data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%2216%22 height=%2216%22 viewBox=%220 0 24 24%22 fill=%22none%22 stroke=%22%239ca3af%22 stroke-width=%222%22 stroke-linecap=%22round%22 stroke-linejoin=%22round%22%3E%3Cpath d=%22m6 9 6 6 6-6%22/%3E%3C/svg%3E")';
+    var selectChevronLight = 'url("data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%2216%22 height=%2216%22 viewBox=%220 0 24 24%22 fill=%22none%22 stroke=%22%236b7280%22 stroke-width=%222%22 stroke-linecap=%22round%22 stroke-linejoin=%22round%22%3E%3Cpath d=%22m6 9 6 6 6-6%22/%3E%3C/svg%3E")';
     var style = document.createElement('style');
     style.id = 'email-template-builder-styles';
     style.textContent = [
@@ -801,8 +779,10 @@
       '.email-builder-field{display:flex;flex-direction:column;gap:6px;margin-bottom:12px;}',
       '.email-builder-field label{font-size:12px;color:var(--email-muted);font-weight:650;}',
       '.email-builder-field input,.email-builder-field textarea,.email-builder-field select{width:100%;border:1px solid var(--email-border-strong);border-radius:8px;background:rgba(255,255,255,.045);color:var(--email-text);font:inherit;font-size:13px;line-height:1.45;padding:9px 10px;outline:none;}',
-      '.email-builder-field select{appearance:auto;}',
-      '.email-builder-field input:focus,.email-builder-field textarea:focus,.email-builder-field select:focus{border-color:var(--email-accent);box-shadow:0 0 0 3px rgba(129,140,248,.16);background:rgba(255,255,255,.07);}',
+      '.email-builder-field select{appearance:none;-webkit-appearance:none;color-scheme:dark;background-color:rgba(255,255,255,.045);background-image:' + selectChevronDark + ';background-repeat:no-repeat;background-position:right 11px center;background-size:14px 14px;padding-right:34px;}',
+      '.email-builder-field input:focus,.email-builder-field textarea:focus,.email-builder-field select:focus{border-color:var(--email-accent);box-shadow:0 0 0 3px rgba(129,140,248,.16);}',
+      '.email-builder-field input:focus,.email-builder-field textarea:focus{background:rgba(255,255,255,.07);}',
+      '.email-builder-field select:focus{background-color:rgba(255,255,255,.07);}',
       '.email-builder-field select:disabled{opacity:.55;cursor:not-allowed;}',
       '.email-builder-field textarea{min-height:112px;resize:vertical;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono",monospace;}',
       '.email-builder-field textarea.large{min-height:180px;}',
@@ -888,7 +868,7 @@
       '.email-builder-modal-actions{padding:12px 16px;border-top:1px solid var(--email-border);display:flex;justify-content:flex-end;gap:8px;background:var(--email-surface-subtle);}',
       '.email-builder-code{width:100%;min-height:170px;border:1px solid rgba(0,0,0,.22);border-radius:8px;background:#080b12;color:#e5e7eb;padding:10px;font-size:12px;line-height:1.45;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono",monospace;white-space:pre;overflow:auto;}',
       '.email-builder-small{font-size:12px;color:var(--email-muted);line-height:1.45;}',
-      '@media (prefers-color-scheme: light){.email-builder-root{--email-bg:#f5f5f7;--email-surface:rgba(255,255,255,.78);--email-surface-strong:rgba(255,255,255,.95);--email-surface-subtle:rgba(255,255,255,.52);--email-border:rgba(15,23,42,.09);--email-border-strong:rgba(15,23,42,.16);--email-text:rgba(15,23,42,.9);--email-muted:rgba(15,23,42,.62);--email-faint:rgba(15,23,42,.42);--email-shadow:0 8px 32px rgba(15,23,42,.08);}}',
+      '@media (prefers-color-scheme: light){.email-builder-root{--email-bg:#f5f5f7;--email-surface:rgba(255,255,255,.78);--email-surface-strong:rgba(255,255,255,.95);--email-surface-subtle:rgba(255,255,255,.52);--email-border:rgba(15,23,42,.09);--email-border-strong:rgba(15,23,42,.16);--email-text:rgba(15,23,42,.9);--email-muted:rgba(15,23,42,.62);--email-faint:rgba(15,23,42,.42);--email-shadow:0 8px 32px rgba(15,23,42,.08);}.email-builder-field select{color-scheme:light;background-image:' + selectChevronLight + ';}}',
       '@media (max-width: 980px){.email-builder-start{grid-template-columns:1fr}.email-builder-grid{grid-template-columns:1fr}.email-builder-visual-chat{top:48px;width:min(340px,92vw)}}',
       '@media (max-width: 860px){.email-builder-root{padding:12px}.email-builder-stats{grid-template-columns:repeat(2,minmax(0,1fr))}.email-builder-row{grid-template-columns:1fr}.email-builder-header{flex-direction:column}.email-builder-status{text-align:left;align-items:flex-start;min-width:0}.email-builder-status-path{max-width:100%}}',
     ].join('');
@@ -913,7 +893,6 @@
 
   function buildInitialState(data) {
     var draft = normalizeDraftInput(isRecord(data && data.draft) ? data.draft : {});
-    var campaignDraftRef = normalizeArtifactRef(draft.campaignDraftArtifactRef, 'json');
     var htmlArtifactPath = firstString([draft.htmlArtifactPath, draft.html_template_artifact_path], '');
     var htmlArtifactSha256 = firstString([draft.htmlArtifactSha256, draft.html_template_artifact_sha256], '');
     return {
@@ -952,16 +931,10 @@
       decidrDecisionIds: Array.isArray(draft.decidrDecisionIds)
         ? draft.decidrDecisionIds.join(', ')
         : firstString([draft.decidrDecisionIds, draft.decidr_decision_ids], ''),
-      lastArtifact: campaignDraftRef
-        ? {
-            workspacePath: campaignDraftRef.workspacePath,
-            workspaceFileId: campaignDraftRef.workspaceFileId,
-            sha256: campaignDraftRef.sha256,
-          }
-        : null,
-      dirty: !campaignDraftRef,
+      lastArtifact: null,
+      dirty: true,
       busy: false,
-      status: campaignDraftRef ? 'Campaign draft artifact loaded' : '',
+      status: '',
       promptText: '',
       visualSelectMode: false,
       visualSelections: [],
@@ -1011,7 +984,7 @@
       '            <div class="email-builder-small" data-role="template-status"></div>',
       '          </div>',
       '        </div>',
-      selectShell('templateArtifact', 'Saved template or campaign draft'),
+      selectShell('templateArtifact', 'Saved template'),
       '        <div class="email-builder-step-actions">',
       '          <button class="email-builder-button primary" data-action="load-selected-template">Load selected</button>',
       '          <button class="email-builder-button" data-action="refresh-templates">Refresh</button>',
@@ -1022,7 +995,7 @@
       '          <span class="email-builder-step-number">3</span>',
       '          <div>',
       '            <p class="email-builder-step-title">Create new</p>',
-      '            <div class="email-builder-small">Start a new campaign draft in the selected workspace.</div>',
+      '            <div class="email-builder-small">Start a new email template in the selected workspace.</div>',
       '          </div>',
       '        </div>',
       '        <button class="email-builder-button primary" data-action="create-new-template">Create new</button>',
@@ -1053,7 +1026,7 @@
       '            <div class="email-builder-artifact-head">',
       '              <div>',
       '                <p class="email-builder-artifact-title">Workspace artifacts</p>',
-      '                <div class="email-builder-small">Search durable storage by path, then load HTML, campaign drafts, or audience artifacts.</div>',
+      '                <div class="email-builder-small">Search durable storage by path, then load HTML template or audience artifacts.</div>',
       '              </div>',
       '            </div>',
       '            <div class="email-builder-artifact-search">',
@@ -1472,7 +1445,7 @@
       }
       if (templateSelectEl) {
         var templateArtifacts = state.templateArtifacts || [];
-        var templateHtml = [optionHtml('', templateArtifacts.length ? 'Select template or campaign draft' : 'No saved templates loaded', !state.selectedTemplateKey, false)];
+        var templateHtml = [optionHtml('', templateArtifacts.length ? 'Select template' : 'No saved templates loaded', !state.selectedTemplateKey, false)];
         templateArtifacts.forEach(function(file) {
           var key = artifactKey(file);
           templateHtml.push(optionHtml(key, templateChoiceLabel(file), key === state.selectedTemplateKey, false));
@@ -1613,7 +1586,6 @@
     function templateSearchPrefixes() {
       return [
         'email/templates/',
-        'email/campaigns/',
         'email/deliverability/templates/',
       ];
     }
@@ -1621,9 +1593,9 @@
     function templateArtifact(file) {
       if (!searchableArtifact(file)) return false;
       var kind = artifactKind(file);
-      if (kind === 'html' || kind === 'campaign') return true;
+      if (kind === 'html') return true;
       var path = filePath(file);
-      return kind === 'json' && path.indexOf('/audiences/') < 0 && path.indexOf('.audience.') < 0;
+      return kind === 'json' && path.indexOf('/campaigns/') < 0 && !path.endsWith('.campaign.json') && path.indexOf('/audiences/') < 0 && path.indexOf('.audience.') < 0;
     }
 
     function currentTemplateContextKey() {
@@ -1655,7 +1627,7 @@
         renderContextControls();
         return Promise.resolve();
       }
-      state.templateStatus = 'Loading saved templates and campaign drafts.';
+      state.templateStatus = 'Loading saved templates.';
       renderContextControls();
       var allFiles = [];
       var seen = {};
@@ -1685,7 +1657,7 @@
           state.selectedTemplateKey = artifactKey(state.templateArtifacts[0]);
         }
         state.templateStatus = state.templateArtifacts.length
-          ? 'Found ' + state.templateArtifacts.length + ' saved template' + (state.templateArtifacts.length === 1 ? '' : 's') + ' or campaign draft' + (state.templateArtifacts.length === 1 ? '' : 's') + '.'
+          ? 'Found ' + state.templateArtifacts.length + ' saved template' + (state.templateArtifacts.length === 1 ? '' : 's') + '.'
           : 'No saved email templates found. Create new to start a draft.';
         state.templateLoadedForKey = currentTemplateContextKey();
         renderContextControls();
@@ -1754,6 +1726,7 @@
           project.id,
           'Email template visual edits',
           'email-template-visual-editor',
+          { creationContext: 'email-template-builder-ai-edit' },
         );
       }).then(function(thread) {
         var threadId = firstString([thread && thread.id, thread && thread.threadId, thread && thread.thread_id], '');
@@ -1863,7 +1836,7 @@
         return artifactKey(file) === state.selectedTemplateKey;
       });
       if (!selected) {
-        throw new Error('Select a saved template or campaign draft first.');
+        throw new Error('Select a saved template first.');
       }
       return loadArtifact(selected);
     }
@@ -2721,7 +2694,7 @@
                   state.artifactResults = matches;
                   state.artifactSearchStatus = matches.length
                     ? 'Found ' + matches.length + ' artifact' + (matches.length === 1 ? '' : 's') + '.'
-                    : 'No email artifacts matched that path. Try email/, email/templates/, email/campaigns/, or email/audiences/.';
+                    : 'No email artifacts matched that path. Try email/, email/templates/, or email/audiences/.';
                   renderArtifactResults();
                   state.status = matches.length ? 'Artifact search ready' : 'No matching artifacts';
                   refreshComputed();
@@ -2905,24 +2878,15 @@
             state.status = 'Audience artifact loaded';
           } else {
             var parsed = JSON.parse(result.text);
-            var campaignDraft = draftFromCampaignArtifact(parsed, result.file, result.sha256);
             var builderDraft = draftFromBuilderArtifact(parsed);
-            if (campaignDraft) {
-              applyDraftToState(campaignDraft, result.file, result.sha256);
-              return loadReferencedHtmlTemplate().then(function(loadedHtml) {
-                state.status = loadedHtml
-                  ? 'Campaign draft and HTML template loaded'
-                  : 'Campaign draft artifact loaded';
-                refreshComputed();
-              });
-            } else if (builderDraft) {
+            if (builderDraft) {
               applyDraftToState(builderDraft, result.file, result.sha256);
               state.lastArtifact = {
                 workspacePath: filePath(result.file),
                 workspaceFileId: firstString([result.file.id, result.file.workspaceFileId], ''),
                 sha256: result.sha256,
               };
-              state.status = 'Template draft artifact loaded';
+              state.status = 'Template artifact loaded';
             } else {
               applyAudienceArtifact(result.file, result.text, result.sha256);
               state.status = 'JSON audience artifact loaded';

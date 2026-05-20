@@ -23,6 +23,8 @@ test("lists template utility tools", async () => {
   const names = response.body.result.tools.map((tool) => tool.name);
   assert.deepEqual(names, [
     "email-template-builder-open",
+    "email-campaign-launcher-open",
+    "email-campaign-history-open",
     "email-template-payload-validate",
     "email-template-persona-test-prompt",
     "email-campaign-persona-prompt",
@@ -31,7 +33,86 @@ test("lists template utility tools", async () => {
   ]);
 });
 
-test("prompt tool schemas allow artifact-backed campaign drafts without raw audience rows", async () => {
+test("opens campaign history renderer with scoped context", async () => {
+  const response = await handleRpc({
+    jsonrpc: "2.0",
+    id: 24,
+    method: "tools/call",
+    params: {
+      name: "email-campaign-history-open",
+      arguments: {
+        organizationId: "org_1",
+        workspaceId: "workspace_1",
+        draft: {
+          status: "SENT",
+          limit: 50,
+          includeEvents: true,
+        },
+      },
+    },
+  });
+  const payload = JSON.parse(response.body.result.content[0].text);
+  assert.equal(payload.renderer, "email_campaign_history");
+  assert.equal(payload.organization_id, "org_1");
+  assert.equal(payload.workspace_id, "workspace_1");
+  assert.equal(payload.draft.status, "SENT");
+  assert.equal(payload.draft.limit, 50);
+  assert.equal(payload.draft.includeEvents, true);
+});
+
+test("opens manual campaign launcher with normalized filter draft metadata", async () => {
+  const response = await handleRpc({
+    jsonrpc: "2.0",
+    id: 23,
+    method: "tools/call",
+    params: {
+      name: "email-campaign-launcher-open",
+      arguments: {
+        threadId: "thread_1",
+        workspaceId: "workspace_1",
+        draft: {
+          campaignPreparePayload: {
+            name: "Segmented launch",
+            subjectTemplate: "Hi {{first_name}}",
+            textTemplate: "Hello {{first_name}}",
+            audienceFilterSpec: {
+              combine: "all",
+              predicates: [
+                {
+                  mode: "include",
+                  fieldPath: "plan",
+                  operator: "equals",
+                  value: "pro",
+                },
+              ],
+            },
+            audienceFilterHash: "filter_hash",
+            audienceFilterCounts: {
+              source: 4,
+              filtered: 2,
+              excluded: 2,
+              invalid: 0,
+            },
+          },
+        },
+      },
+    },
+  });
+  const payload = JSON.parse(response.body.result.content[0].text);
+  assert.equal(payload.renderer, "email_campaign_launcher");
+  assert.equal(payload.thread_id, "thread_1");
+  assert.equal(payload.workspace_id, "workspace_1");
+  assert.equal(payload.draft.name, "Segmented launch");
+  assert.equal(payload.draft.audienceFilterHash, "filter_hash");
+  assert.deepEqual(payload.draft.audienceFilterCounts, {
+    source: 4,
+    filtered: 2,
+    excluded: 2,
+    invalid: 0,
+  });
+});
+
+test("prompt tool schemas allow artifact-backed campaign inputs without raw audience rows", async () => {
   const response = await handleRpc({
     jsonrpc: "2.0",
     id: 22,
@@ -78,7 +159,7 @@ test("validates template payloads through tool calls", async () => {
   assert.equal(payload.preview.subject, "Hi Avery");
 });
 
-test("opens builder with normalized runtime campaign draft artifact output", async () => {
+test("opens builder with normalized runtime campaign prepare payload output", async () => {
   const response = await handleRpc({
     jsonrpc: "2.0",
     id: 33,
@@ -87,13 +168,6 @@ test("opens builder with normalized runtime campaign draft artifact output", asy
       name: "email-template-builder-open",
       arguments: {
         draft: {
-          campaignDraftArtifactRef: {
-            source: "workspace_file",
-            format: "json",
-            workspacePath: "email/campaigns/launch.campaign.json",
-            workspaceFileId: "file_campaign",
-            sha256: "campaign_hash",
-          },
           campaignPreparePayload: {
             name: "Launch",
             subjectTemplate: "Hi {{first_name}}",
@@ -112,7 +186,7 @@ test("opens builder with normalized runtime campaign draft artifact output", asy
   });
   const payload = JSON.parse(response.body.result.content[0].text);
   assert.equal(payload.draft.name, "Launch");
-  assert.equal(payload.draft.workspacePath, "email/campaigns/launch.campaign.json");
+  assert.equal(payload.draft.workspacePath, undefined);
   assert.equal(payload.draft.audienceArtifactPath, "email/audiences/launch.json");
   assert.equal(payload.draft.audienceArtifactSha256, "audience_hash");
 });
@@ -218,7 +292,7 @@ test("builds metadata-only visual edit prompts through tool calls", async () => 
   assert.equal(payload.artifactRef.workspacePath, "email/templates/product-launch.html");
 });
 
-test("builds visual edit prompts from nested draft artifacts and top-level selections", async () => {
+test("builds visual edit prompts from nested template artifacts and top-level selections", async () => {
   const response = await handleRpc({
     jsonrpc: "2.0",
     id: 8,

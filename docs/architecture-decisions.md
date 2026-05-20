@@ -48,6 +48,65 @@ When making a significant architectural decision:
 
 ## Active Decisions
 
+### ADR-012: Campaign History As A Read-Only Renderer
+**Date:** 2026-05-19
+**Status:** Accepted
+**Deciders:** Daenon Janis, Codex
+**DecidR / GitHub Log:** `DeeJanuz/tribe-x-ai#1`
+
+#### Context
+Manual campaign scheduling now creates database-backed campaign records, but users still need an operational history view after sends are queued. Status refresh belongs in the launcher, while cross-campaign analytics needs a separate surface with opens, opt-outs, link clicks, bounces, and send timing.
+
+#### Decision
+Add `email_campaign_history` as a standalone, read-only MCPViews renderer. The renderer loads campaign history through platform-owned database APIs, presents roll-up stats and per-campaign details, and never mutates sends or artifacts. The launcher status step gets an explicit Refresh Status action for the current campaign.
+
+#### Rationale
+Keeping history separate from launching prevents the approval/scheduling workflow from becoming crowded while still giving campaign operators the stats they need after a send. Reading from platform APIs keeps analytics consistent with the database audit trail and future provider event ingestion.
+
+#### Consequences
+**Positive:**
+- Campaign operators can refresh current send status and review historical stats without raw support payloads.
+- Engagement metrics have stable UI slots before provider open/click/bounce tracking is expanded.
+- The renderer remains safe to open broadly because it is read-only.
+
+**Negative:**
+- The renderer depends on platform history aggregation APIs in addition to the existing status endpoint.
+
+**Neutral:**
+- Opens, clicks, and bounces are surfaced from recorded events or campaign metadata when available.
+
+---
+
+### ADR-011: Human-Centered Manual Campaign Launcher
+**Date:** 2026-05-19
+**Status:** Accepted
+**Deciders:** Daenon Janis, Codex
+**DecidR Decision:** `cmpcpcizd0001jo04ehszu2mr`
+
+#### Context
+The manual campaign launcher added direct artifact-backed campaign execution, but its default flow still exposed implementation details: object IDs, hashes, approval tokens, durable storage paths, raw platform responses, and dense workflow tabs. The target user is a non-technical HR manager who needs to pick a template, choose an audience, filter people, test the message, approve it, and schedule send without handling platform credentials or storage syntax.
+
+#### Decision
+Adopt the shared MCPViews renderer standard in `mcpviews/docs/human-centered-renderer-ux-principles.md` for the manual campaign launcher. The default UI will use a guided wizard, browser-style file/folder choices, in-flow approval, and support-details disclosure for raw diagnostics. Approval tokens remain backend-owned: scheduling from the plugin UI is the manual approval event, and manual apply sends only campaign and schedule data.
+
+#### Rationale
+The launcher should map to the manager's business task, not the platform's internal model. Recognition-based artifact pickers, one obvious next action, and progressive disclosure reduce errors and training burden while preserving the audit trail required for production email sends.
+
+#### Consequences
+**Positive:**
+- Users no longer need to type approval tokens, object IDs, hashes, or durable storage paths.
+- Filtered audience rows remain temporary unless the user explicitly saves a renamed artifact.
+- Production send authority remains in the TribeX platform while the UI stays approachable.
+
+**Negative:**
+- The renderer has to maintain a richer wizard state and file-browser save surface.
+- The platform must distinguish manual plugin approval from persona-mediated MCPViews review approval.
+
+**Neutral:**
+- The existing persona-fed route keeps its approval-token compatibility.
+
+---
+
 ### ADR-009: Simplify Template Editing And Derive Plain Text
 **Date:** 2026-05-17
 **Status:** Accepted
@@ -82,10 +141,10 @@ The primary user job at this stage is authoring and previewing an email template
 **Deciders:** Daenon Janis, Codex
 
 #### Context
-The campaign builder could load artifacts by workspace path, but the first screen still exposed too much low-level workspace/file plumbing. Users opening the builder need a natural first path: pick the organization, choose an existing email template or campaign draft, or start a new one.
+The campaign builder could load artifacts by workspace path, but the first screen still exposed too much low-level workspace/file plumbing. Users opening the builder need a natural first path: pick the organization, choose an existing email template, or start a new one. Campaign drafts are now resumed from database records after prepare, not from durable draft artifacts.
 
 #### Decision
-Add a guided start panel to `email_template_builder`. The renderer resolves thread context when available, discovers organizations and workspaces through `window.__tribexAiClient`, lists saved email templates and campaign drafts from durable workspace storage, and offers a primary create-new action before the detailed editor controls.
+Add a guided start panel to `email_template_builder`. The renderer resolves thread context when available, discovers organizations and workspaces through `window.__tribexAiClient`, lists saved email templates from durable workspace storage, and offers a primary create-new action before the detailed editor controls.
 
 #### Rationale
 The org/workspace/template choice is the real task entrypoint. Keeping it inside the renderer avoids new backend endpoints while making the existing artifact search an advanced fallback instead of the main workflow.
@@ -93,7 +152,8 @@ The org/workspace/template choice is the real task entrypoint. Keeping it inside
 #### Consequences
 **Positive:**
 - The builder opens with a clear "Select org -> Select template -> Create new" flow.
-- Existing persona-authored templates and campaign drafts are discoverable without manual file paths.
+- Existing persona-authored templates are discoverable without manual file paths.
+- Prepared campaign drafts are discoverable in the campaign launcher once the platform prepare step creates a database record.
 - Thread-launched builder sessions can resolve the org/workspace automatically.
 
 **Negative:**
@@ -139,10 +199,10 @@ The plugin is the visual selection surface, so it should hand the persona the ex
 **Deciders:** Daenon Janis, Codex
 
 #### Context
-Persona-created HTML templates and campaign drafts live in TribeX AI durable workspace storage. Requiring users to copy `workspacePath`, file IDs, and hashes by hand makes the campaign-builder workflow fragile and too technical.
+Persona-created HTML templates and audience inputs live in TribeX AI durable workspace storage, while prepared campaign drafts live in the platform database. Requiring users to copy `workspacePath`, file IDs, hashes, or campaign IDs by hand makes the campaign-builder workflow fragile and too technical.
 
 #### Decision
-Add a workspace artifact search/load surface directly inside `email_template_builder`. The renderer uses the existing `window.__tribexAiClient` workspace file APIs to list files under `email/`, filter by path, download selected artifacts through signed file links, and hydrate the builder from HTML template files, campaign draft JSON files, and audience JSON/CSV files.
+Add a workspace artifact search/load surface directly inside `email_template_builder`. The renderer uses the existing `window.__tribexAiClient` workspace file APIs to list files under `email/`, filter by path, download selected artifacts through signed file links, and hydrate the builder from HTML template files and audience JSON/CSV files. Prepared campaign drafts are loaded through the campaign launcher database draft library.
 
 #### Rationale
 The plugin already has authenticated workspace context when opened from a TribeX thread or workspace. Reusing that client keeps artifact discovery local to the user session, avoids adding new backend endpoints, and turns the persona artifact flow into a visible, clickable review path.
@@ -150,8 +210,8 @@ The plugin already has authenticated workspace context when opened from a TribeX
 #### Consequences
 **Positive:**
 - Users can search by durable file path instead of manually entering artifact refs.
-- Campaign draft artifacts can pull their referenced HTML template for preview when the file ID is present.
-- HTML, audience, and campaign refs/hashes remain visible before prepare or approval handoff.
+- Template and audience artifacts stay visible before prepare or approval handoff.
+- Prepared campaign drafts can be reopened from the database-backed draft library once `email_campaign_prepare` succeeds.
 
 **Negative:**
 - Search is scoped to workspace files under `email/`; broader artifact indexing can come later if durable storage grows large.
@@ -161,28 +221,29 @@ The plugin already has authenticated workspace context when opened from a TribeX
 
 ---
 
-### ADR-006: Consume Runtime Draft Artifacts In Campaign Builder
+### ADR-006: Consume Runtime Prepare Payloads In Campaign Builder
 **Date:** 2026-05-17
-**Status:** Accepted
+**Status:** Superseded by database-backed campaign drafts
 **Deciders:** Daenon Janis, Codex
 
 #### Context
-TribeX AI now exposes sandbox-write-gated persona runtime tools that create rich HTML template artifacts and campaign draft artifacts in durable workspace storage. The MCPViews campaign builder needs to open those tool outputs directly, not force users to retype artifact refs or reconstruct prepare payloads by hand.
+TribeX AI exposes sandbox-write-gated persona runtime tools that create rich HTML template artifacts in durable workspace storage, while campaign drafts now live as platform database records after `email_campaign_prepare` succeeds. The MCPViews campaign builder needs to open durable template/audience inputs and database-backed prepared drafts without forcing users to retype artifact refs or reconstruct prepare payloads by hand.
 
 #### Decision
-Normalize `email_template_artifact_create` and `email_campaign_draft_artifact_create` outputs inside the plugin. The builder accepts nested `campaignPreparePayload`, `campaignDraftArtifactRef`, `htmlTemplateArtifactRef`, and `audienceArtifactRef`, displays their workspace paths and hashes, and generates the existing approval-gated persona prompt from those immutable refs.
+Normalize `email_template_artifact_create` outputs and runtime `campaignPreparePayload` objects inside the plugin. The builder accepts `htmlTemplateArtifactRef` and `audienceArtifactRef`, displays their workspace paths and hashes, and uses `email_campaign_prepare` as the single boundary that creates a drafted campaign database item. Prepared drafts are reopened from the campaign library instead of from `email/campaigns/*.campaign.json`.
 
 #### Rationale
-The runtime tools are the artifact authoring layer, while the plugin is the visual review and handoff layer. Keeping normalization in the plugin lets persona-created drafts flow into the same UI used for manual campaign review without giving the plugin production-send authority.
+The runtime tools are the template/audience authoring layer, while the platform database owns prepared campaign state. Keeping normalization in the plugin lets persona-created inputs flow into the same UI used for manual campaign review without giving the plugin production-send authority or maintaining duplicate campaign draft artifacts.
 
 #### Consequences
 **Positive:**
-- Persona-authored HTML and campaign drafts open cleanly in the campaign builder.
-- Artifact-backed sends keep audience and HTML refs/hashes visible before approval.
+- Persona-authored HTML and audience inputs open cleanly in the campaign builder.
+- Prepared campaigns become durable database drafts as soon as step 4/prepare succeeds.
+- Reopening a draft resumes from the platform campaign record rather than a stale artifact snapshot.
 - Production send controls remain human gated through platform tools.
 
 **Negative:**
-- The builder must tolerate artifact-backed campaigns that do not include raw audience rows.
+- The builder must tolerate prepared campaign records that do not include raw audience rows.
 
 **Neutral:**
 - Inline draft editing remains supported for smoke testing and manual workflows.

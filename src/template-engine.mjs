@@ -97,9 +97,6 @@ export function normalizeDraftInput(input) {
     normalizeArtifactRef(raw.audienceArtifactRef, "json") ||
     normalizeArtifactRef(prepare.audienceArtifactRef, "json") ||
     normalizeArtifactRef(metadata.audienceArtifactRef, "json");
-  const campaignDraftRef =
-    normalizeArtifactRef(raw.campaignDraftArtifactRef, "json") ||
-    normalizeArtifactRef(metadata.campaignDraftArtifactRef, "json");
   const merged = dropUndefined({
     ...raw,
     ...prepare,
@@ -107,7 +104,6 @@ export function normalizeDraftInput(input) {
     sampleVariables: raw.sampleVariables ?? metadata.sampleVariables,
     htmlTemplateArtifactRef: htmlRef,
     audienceArtifactRef: audienceRef,
-    campaignDraftArtifactRef: campaignDraftRef,
     htmlArtifactPath: htmlRef?.workspacePath ?? raw.htmlArtifactPath,
     htmlArtifactFileId: htmlRef?.workspaceFileId ?? raw.htmlArtifactFileId,
     htmlArtifactSha256: htmlRef?.sha256 ?? raw.htmlArtifactSha256,
@@ -119,12 +115,18 @@ export function normalizeDraftInput(input) {
       audienceRef?.format ?? raw.audienceArtifactFormat ?? "json",
     audienceArtifactSha256:
       audienceRef?.sha256 ?? raw.audienceArtifactSha256,
-    workspacePath:
-      campaignDraftRef?.workspacePath ?? raw.workspacePath ?? raw.relativePath,
-    workspaceFileId:
-      campaignDraftRef?.workspaceFileId ?? raw.workspaceFileId ?? raw.fileId,
-    workspaceSha256:
-      campaignDraftRef?.sha256 ?? raw.workspaceSha256 ?? raw.sha256,
+    audienceFilterSpec:
+      raw.audienceFilterSpec ??
+      prepare.audienceFilterSpec ??
+      metadata.audienceFilterSpec,
+    audienceFilterHash:
+      raw.audienceFilterHash ??
+      prepare.audienceFilterHash ??
+      metadata.audienceFilterHash,
+    audienceFilterCounts:
+      raw.audienceFilterCounts ??
+      prepare.audienceFilterCounts ??
+      metadata.audienceFilterCounts,
   });
   delete merged.campaignPreparePayload;
   return merged;
@@ -330,6 +332,18 @@ export function buildCampaignPayload(input, options = {}) {
           providedHtmlRef?.sha256 || options.htmlArtifactSha256 || draft.htmlArtifactSha256,
       })
     : undefined;
+  const audienceFilterSpec = isRecord(options.audienceFilterSpec)
+    ? options.audienceFilterSpec
+    : isRecord(draft.audienceFilterSpec)
+      ? draft.audienceFilterSpec
+      : undefined;
+  const audienceFilterHash =
+    stringValue(options.audienceFilterHash) || stringValue(draft.audienceFilterHash);
+  const audienceFilterCounts = isRecord(options.audienceFilterCounts)
+    ? options.audienceFilterCounts
+    : isRecord(draft.audienceFilterCounts)
+      ? draft.audienceFilterCounts
+      : undefined;
 
   return dropUndefined({
     name: String(draft.name || draft.templateName || "Email template test").trim(),
@@ -343,6 +357,9 @@ export function buildCampaignPayload(input, options = {}) {
     htmlTemplateArtifactRef,
     audience,
     audienceArtifactRef,
+    audienceFilterSpec,
+    audienceFilterHash,
+    audienceFilterCounts,
     decidrProjectId: draft.decidrProjectId,
     decidrDecisionIds: normalizeDecisionIds(draft.decidrDecisionIds),
     metadata: {
@@ -353,8 +370,10 @@ export function buildCampaignPayload(input, options = {}) {
       workspacePath: options.workspacePath,
       workspaceFileId: options.workspaceFileId,
       audienceArtifactRef,
+      audienceFilterSpec,
+      audienceFilterHash,
+      audienceFilterCounts,
       htmlTemplateArtifactRef,
-      campaignDraftArtifactRef: draft.campaignDraftArtifactRef,
     },
     maxRecipients: testOnly ? 1 : undefined,
   });
@@ -487,8 +506,8 @@ export function buildPersonaTestPrompt(input, options = {}) {
     "Do not modify the templates, audience row, sender, or test recipient after preparation.",
     "",
     options.workspacePath
-      ? `Workspace draft artifact: ${options.workspacePath}`
-      : "Workspace draft artifact: not provided.",
+      ? `Workspace template artifact: ${options.workspacePath}`
+      : "Workspace template artifact: not provided.",
     "",
     "email_campaign_prepare payload:",
     "```json",
@@ -546,8 +565,8 @@ export function buildPersonaCampaignPrompt(input, options = {}) {
     "Do not include raw rendered body content or recipient emails in the final summary.",
     "",
     options.workspacePath
-      ? `Workspace draft artifact: ${options.workspacePath}`
-      : "Workspace draft artifact: not provided.",
+      ? `Workspace template artifact: ${options.workspacePath}`
+      : "Workspace template artifact: not provided.",
     "",
     "email_campaign_prepare payload:",
     "```json",
