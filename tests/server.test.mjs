@@ -11,6 +11,7 @@ test("initializes the MCP server", async () => {
   });
   assert.equal(response.status, 200);
   assert.equal(response.body.result.serverInfo.name, "email-deliverability");
+  assert.equal(response.body.result.serverInfo.version, "0.2.0");
 });
 
 test("lists template utility tools", async () => {
@@ -25,6 +26,7 @@ test("lists template utility tools", async () => {
     "email-template-builder-open",
     "email-campaign-launcher-open",
     "email-campaign-history-open",
+    "email-performance-dashboard-open",
     "email-template-payload-validate",
     "email-template-persona-test-prompt",
     "email-campaign-persona-prompt",
@@ -52,12 +54,37 @@ test("opens campaign history renderer with scoped context", async () => {
     },
   });
   const payload = JSON.parse(response.body.result.content[0].text);
-  assert.equal(payload.renderer, "email_campaign_history");
+  assert.equal(payload.renderer, "email_performance_dashboard");
   assert.equal(payload.organization_id, "org_1");
   assert.equal(payload.workspace_id, "workspace_1");
+  assert.equal(payload.draft.source, "CAMPAIGN");
   assert.equal(payload.draft.status, "SENT");
   assert.equal(payload.draft.limit, 50);
   assert.equal(payload.draft.includeEvents, true);
+});
+
+test("opens email performance dashboard with the new plugin prefix", async () => {
+  const response = await handleRpc({
+    jsonrpc: "2.0",
+    id: 25,
+    method: "tools/call",
+    params: {
+      name: "email_performance__email-performance-dashboard-open",
+      arguments: {
+        organizationId: "org_1",
+        workspaceId: "workspace_1",
+        draft: {
+          source: "ONE_OFF",
+          provider: "GMAIL",
+          limit: 10,
+        },
+      },
+    },
+  });
+  const payload = JSON.parse(response.body.result.content[0].text);
+  assert.equal(payload.renderer, "email_performance_dashboard");
+  assert.equal(payload.draft.source, "ONE_OFF");
+  assert.equal(payload.draft.provider, "GMAIL");
 });
 
 test("opens manual campaign launcher with normalized filter draft metadata", async () => {

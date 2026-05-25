@@ -1,6 +1,10 @@
-# MCPViews Email Deliverability Plugin
+# MCPViews Email Campaigns + Performance Plugins
 
-First staged implementation for deterministic email template and campaign drafting in MCPViews.
+Local MCPViews bridge for the split email surface:
+
+- `manifest.email-campaigns.json` installs **Email Campaigns** with template builder and campaign launcher tools under `email_campaigns__`.
+- `manifest.email-performance.json` installs **Email Performance** with the read-only performance dashboard under `email_performance__`.
+- `manifest.json` remains a deprecated one-release `email-deliverability` compatibility shim.
 
 ## What This Slice Does
 
@@ -29,7 +33,7 @@ First staged implementation for deterministic email template and campaign drafti
   - `email_campaign_send_apply`
 - Lets manual campaign launcher users approve and schedule from the plugin UI without a separate MCPViews review callback.
 - Adds an explicit Refresh Status button in the campaign launcher status step.
-- Opens an `email_campaign_history` renderer for database-backed campaign history, send timing, opens, opt-outs, link clicks, and bounces.
+- Opens an `email_performance_dashboard` renderer for unified campaign and tracked one-off email performance, including source/provider filters, opens, clicks, failed/bounced sends, and event timelines.
 - Builds template revision prompts that pass the selected HTML artifact ref and instruct personas to search/read the existing template, then update the same workspace path with an expected SHA-256 guard.
 - Provides AI edit mode for rendered HTML blocks:
   - select blocks in the preview;
@@ -37,7 +41,7 @@ First staged implementation for deterministic email template and campaign drafti
   - submit one batch prompt to the plugin-specific `email-template-visual-editor` persona.
 - Provides manual edit mode for direct rendered-text edits, then regenerates the plain text body deterministically from the updated HTML.
 
-Production send execution remains human gated. The plugin never sends production email directly. Campaign history is read-only and loads platform-owned analytics records.
+Production send execution remains human gated. The plugins never send production email directly. Email Performance is read-only and loads platform-owned analytics records.
 
 Campaign sender, audience, DecidR, artifact hash, and persona handoff details are intentionally kept out of the default template-editing view. They remain platform concerns for the campaign workflow rather than primary fields for template creation.
 
@@ -56,16 +60,16 @@ The local MCP endpoint is:
 http://127.0.0.1:4885/mcp
 ```
 
-Install `manifest.json` in MCPViews as a local plugin while developing.
+Install `manifest.email-campaigns.json` and `manifest.email-performance.json` in MCPViews while developing. `manifest.json` is kept only as the compatibility shim for existing installs.
 
 ## Release
 
 The public plugin release flow mirrors the DecidR plugin:
 
 1. Add release copy to `RELEASE_NOTES.md` and `docs/RELEASE_NOTES.md`.
-2. Bump `manifest.json` and `package.json`.
-3. Run `bash build.sh` to refresh `manifest.json.download_url` and create `release/email-deliverability.zip`.
-4. Push `master`; GitHub Actions verifies, rebuilds, creates the versioned release asset, and clears `RELEASE_NOTES.md`.
+2. Bump `manifest.email-campaigns.json`, `manifest.email-performance.json`, and `package.json` together.
+3. Run `bash build.sh` to refresh manifest `download_url` values and create `release/email-campaigns.zip` plus `release/email-performance.zip`. The legacy `release/email-deliverability.zip` is also rebuilt from the deprecated compatibility manifest.
+4. Push `master`; GitHub Actions verifies, rebuilds, creates the versioned split release assets, and clears `RELEASE_NOTES.md`.
 
 ## Renderer Payload
 

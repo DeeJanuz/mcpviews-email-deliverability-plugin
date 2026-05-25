@@ -3,7 +3,9 @@ name: Release
 on:
   push:
     branches: [master]
-    paths: [manifest.json]
+    paths:
+      - manifest.email-campaigns.json
+      - manifest.email-performance.json
 
 jobs:
   release:
@@ -25,10 +27,17 @@ jobs:
       - name: Check version change
         id: version
         run: |
-          CURRENT=$(python3 -c "import json; print(json.load(open('manifest.json'))['version'])")
-          PREVIOUS=$(git show HEAD~1:manifest.json 2>/dev/null | python3 -c "import json,sys; print(json.load(sys.stdin)['version'])" 2>/dev/null || echo "")
+          CAMPAIGNS=$(python3 -c "import json; print(json.load(open('manifest.email-campaigns.json'))['version'])")
+          PERFORMANCE=$(python3 -c "import json; print(json.load(open('manifest.email-performance.json'))['version'])")
+          if [ "$CAMPAIGNS" != "$PERFORMANCE" ]; then
+            echo "Split manifest versions must match: campaigns=$CAMPAIGNS performance=$PERFORMANCE" >&2
+            exit 1
+          fi
+          CURRENT="$CAMPAIGNS"
+          PREVIOUS_CAMPAIGNS=$(git show HEAD~1:manifest.email-campaigns.json 2>/dev/null | python3 -c "import json,sys; print(json.load(sys.stdin)['version'])" 2>/dev/null || echo "")
+          PREVIOUS_PERFORMANCE=$(git show HEAD~1:manifest.email-performance.json 2>/dev/null | python3 -c "import json,sys; print(json.load(sys.stdin)['version'])" 2>/dev/null || echo "")
           echo "current=$CURRENT" >> "$GITHUB_OUTPUT"
-          if [ "$CURRENT" != "$PREVIOUS" ]; then
+          if [ "$CURRENT" != "$PREVIOUS_CAMPAIGNS" ] || [ "$CURRENT" != "$PREVIOUS_PERFORMANCE" ]; then
             echo "changed=true" >> "$GITHUB_OUTPUT"
           else
             echo "changed=false" >> "$GITHUB_OUTPUT"
@@ -52,11 +61,15 @@ jobs:
           VERSION="${{ steps.version.outputs.current }}"
           BODY=$(sed '1{/^# Unreleased$/d;}' RELEASE_NOTES.md | sed '/^$/d')
           if [ -n "$BODY" ]; then
-            gh release create "$VERSION" release/email-deliverability.zip \
+            gh release create "$VERSION" \
+              release/email-campaigns.zip \
+              release/email-performance.zip \
               --title "$VERSION" \
               --notes "$BODY"
           else
-            gh release create "$VERSION" release/email-deliverability.zip \
+            gh release create "$VERSION" \
+              release/email-campaigns.zip \
+              release/email-performance.zip \
               --title "$VERSION" \
               --generate-notes
           fi

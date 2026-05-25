@@ -48,6 +48,39 @@ When making a significant architectural decision:
 
 ## Active Decisions
 
+### ADR-013: Split Campaign Authoring And Performance Analytics Plugins
+**Date:** 2026-05-25
+**Status:** Accepted
+**Deciders:** Daenon Janis, Codex
+
+#### Context
+The original `email-deliverability` plugin combined template authoring, campaign launch, and campaign history into one public install surface. Email analytics now needs to cover both campaign sends and tracked one-off messages, while campaign authoring still owns template and audience workflow tools.
+
+#### Decision
+Publish two public manifests from this repository:
+
+- `email-campaigns` exposes the template builder and manual campaign launcher with the `email_campaigns__` tool prefix.
+- `email-performance` exposes the read-only `email_performance_dashboard` with the `email_performance__` tool prefix.
+
+The legacy `email-deliverability` manifest remains a deprecated compatibility shim for existing installs. Release packaging must create separate `email-campaigns.zip` and `email-performance.zip` assets for the shared split version.
+
+#### Rationale
+Separate manifests make the installed tool surface clearer and let analytics evolve without expanding the campaign-authoring plugin. Keeping the compatibility shim protects existing local installs while new installs can choose the narrower plugin they actually need.
+
+#### Consequences
+**Positive:**
+- MCPViews users see clearer plugin names and tool prefixes.
+- Campaign workflow tools and performance analytics can be installed independently.
+- The release workflow validates that split manifest versions stay in sync.
+
+**Negative:**
+- Build and release automation must produce multiple zip assets from one repository.
+
+**Neutral:**
+- The local MCP bridge still serves all tools from one server during development.
+
+---
+
 ### ADR-012: Campaign History As A Read-Only Renderer
 **Date:** 2026-05-19
 **Status:** Accepted

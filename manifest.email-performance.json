@@ -1,0 +1,59 @@
+{
+  "name": "email-performance",
+  "version": "0.2.0",
+  "download_url": "https://github.com/DeeJanuz/mcpviews-email-deliverability-plugin/releases/download/0.2.0/email-performance.zip",
+  "renderers": {
+    "email-performance-dashboard-open": "email_performance_dashboard"
+  },
+  "mcp": {
+    "url": "http://127.0.0.1:4885/mcp",
+    "auth": null,
+    "tool_prefix": "email_performance__"
+  },
+  "renderer_definitions": [
+    {
+      "name": "email_performance_dashboard",
+      "description": "Read-only email performance dashboard for campaigns and tracked one-off emails.",
+      "scope": "universal",
+      "tools": [
+        "email-performance-dashboard-open"
+      ],
+      "data_hint": "{ \"thread_id\"?: \"string\", \"workspace_id\"?: \"string\", \"project_id\"?: \"string\", \"organization_id\"?: \"string\", \"draft\"?: { \"source\"?: \"ALL|CAMPAIGN|ONE_OFF\", \"provider\"?: \"ALL|INTERNAL|GMAIL|OUTLOOK|RESEND\", \"limit\"?: \"number\", \"includeEvents\"?: \"boolean\" } }",
+      "rule": "Use `email_performance_dashboard` for read-only email performance across campaigns and tracked one-off messages, with source/provider filters, open and click rates, failed/bounced counts, and detail event timelines.",
+      "display_mode": "replace",
+      "standalone": true,
+      "standalone_label": "Email Performance"
+    }
+  ],
+  "registry_index": {
+    "summary": "Read-only email performance analytics for campaign and one-off tracked sends.",
+    "tags": [
+      "email",
+      "performance",
+      "tracking",
+      "analytics",
+      "gmail",
+      "outlook"
+    ],
+    "tool_groups": [
+      {
+        "name": "Performance Dashboard",
+        "hint": "Open unified campaign and one-off email performance analytics.",
+        "tools": [
+          "email-performance-dashboard-open"
+        ]
+      }
+    ],
+    "renderer_names": [
+      "email_performance_dashboard"
+    ]
+  },
+  "tool_rules": {
+    "email-performance-dashboard-open": "Returns a payload for `email_performance_dashboard`."
+  },
+  "plugin_rules": [
+    "The Email Performance plugin is read-only and never sends email.",
+    "The dashboard reads campaign analytics through the campaign adapter and one-off analytics from EmailPerformance* records.",
+    "One-off personalized sends do not require unsubscribe or suppression handling."
+  ]
+}

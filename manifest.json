@@ -5,7 +5,8 @@
   "renderers": {
     "email-template-builder-open": "email_template_builder",
     "email-campaign-launcher-open": "email_campaign_launcher",
-    "email-campaign-history-open": "email_campaign_history",
+    "email-campaign-history-open": "email_performance_dashboard",
+    "email-performance-dashboard-open": "email_performance_dashboard",
     "email-template-payload-validate": "rich_content",
     "email-template-persona-test-prompt": "rich_content",
     "email-campaign-persona-prompt": "rich_content",
@@ -45,17 +46,18 @@
       "standalone_label": "Email Campaigns"
     },
     {
-      "name": "email_campaign_history",
-      "description": "Standalone campaign history dashboard for database-backed email campaign delivery stats, opens, opt-outs, link clicks, bounces, send times, and status refresh.",
+      "name": "email_performance_dashboard",
+      "description": "Read-only email performance dashboard for campaigns and tracked one-off emails, including opens, clicks, failed/bounced sends, providers, and event timelines.",
       "scope": "universal",
       "tools": [
-        "email-campaign-history-open"
+        "email-campaign-history-open",
+        "email-performance-dashboard-open"
       ],
-      "data_hint": "{ \"thread_id\"?: \"string\", \"workspace_id\"?: \"string\", \"project_id\"?: \"string\", \"organization_id\"?: \"string\", \"draft\"?: { \"status\"?: \"string\", \"limit\"?: \"number\", \"campaignId\"?: \"string\", \"includeEvents\"?: \"boolean\" } }",
-      "rule": "Use `email_campaign_history` when the user wants to inspect sent or drafted campaign history, delivery stats, opens, opt-outs, link clicks, bounces, send times, status trends, or refresh campaign analytics from the platform database.",
+      "data_hint": "{ \"thread_id\"?: \"string\", \"workspace_id\"?: \"string\", \"project_id\"?: \"string\", \"organization_id\"?: \"string\", \"draft\"?: { \"source\"?: \"ALL|CAMPAIGN|ONE_OFF\", \"provider\"?: \"ALL|INTERNAL|GMAIL|OUTLOOK|RESEND\", \"limit\"?: \"number\", \"includeEvents\"?: \"boolean\" } }",
+      "rule": "Use `email_performance_dashboard` when the user wants read-only email performance across campaigns and tracked one-off messages, with source/provider filters, open/click rates, failed/bounced sends, and detail event timelines. The deprecated campaign-history open tool routes here filtered to campaigns.",
       "display_mode": "replace",
       "standalone": true,
-      "standalone_label": "Campaign History"
+      "standalone_label": "Email Performance"
     }
   ],
   "registry_index": {
@@ -90,23 +92,25 @@
         ]
       },
       {
-        "name": "Campaign History",
-        "hint": "Open database-backed campaign history with delivery stats, opens, opt-outs, link clicks, bounces, send times, and status refresh.",
+        "name": "Email Performance",
+        "hint": "Open read-only email performance for campaigns and tracked one-off messages with source/provider filters, opens, clicks, and event timelines.",
         "tools": [
-          "email-campaign-history-open"
+          "email-campaign-history-open",
+          "email-performance-dashboard-open"
         ]
       }
     ],
     "renderer_names": [
       "email_template_builder",
       "email_campaign_launcher",
-      "email_campaign_history"
+      "email_performance_dashboard"
     ]
   },
   "tool_rules": {
     "email-template-builder-open": "Returns a lightweight payload for the `email_template_builder` renderer. Use `push_content` with tool_name `email_template_builder` and the returned data to open the UI.",
     "email-campaign-launcher-open": "Returns a lightweight payload for the `email_campaign_launcher` renderer. Use `push_content` with tool_name `email_campaign_launcher` and the returned data to open the manual campaign UI.",
-    "email-campaign-history-open": "Returns a lightweight payload for the `email_campaign_history` renderer. Use `push_content` with tool_name `email_campaign_history` and the returned data to open campaign history.",
+    "email-campaign-history-open": "Deprecated compatibility shim. Returns a payload for `email_performance_dashboard` filtered to campaign source.",
+    "email-performance-dashboard-open": "Returns a lightweight payload for the `email_performance_dashboard` renderer. Use `push_content` with tool_name `email_performance_dashboard` and the returned data to open email performance.",
     "email-template-payload-validate": "Validates explicit `{{variable}}` placeholders against normalized JSON audience rows. Missing variables block persona test prompt generation.",
     "email-template-persona-test-prompt": "Builds a safety-scoped prompt for a TribeX AI persona to call `email_campaign_prepare`, `email_campaign_preview`, and `email_campaign_test_send` for exactly one test recipient.",
     "email-campaign-persona-prompt": "Builds an approval-gated prompt for a TribeX AI persona to call prepare, preview, optional test send, MCPViews review proposal, send apply only after accepted approval, and status.",
@@ -125,6 +129,7 @@
     "The template builder's persona-fed campaign path must continue to use a TribeX AI persona with the platform email_campaign_* tools.",
     "The manual `email_campaign_launcher` path must use renderer-accessible direct platform calls or a narrow platform broker, never a persona prompt. Prepare uses temporary inline filtered audience rows unless the user explicitly saves a renamed filtered JSON audience artifact under durable workspace storage. Saved artifacts must preserve source artifact refs, hashes, filter specs, filter hashes, and count metadata. Sender configuration is resolved from organization web portal settings rather than manual launcher fields.",
     "Scheduling from the manual campaign launcher UI is sufficient approval for production send apply; manual users never handle MCPViews review callbacks, approval tokens, object IDs, hashes, or storage paths in the default launcher flow.",
-    "The campaign history renderer is read-only and must load campaign analytics from platform-owned database history APIs, including send counts, opens, opt-outs, link clicks, bounces, and send timing metadata."
+    "Campaign history opens are deprecated compatibility shims that route to the Email Performance dashboard filtered to campaigns.",
+    "The Email Performance dashboard is read-only and must load unified campaign and one-off analytics from platform-owned database APIs, including source/provider filters, send counts, opens, clicks, failed/bounced sends, and event timelines."
   ]
 }

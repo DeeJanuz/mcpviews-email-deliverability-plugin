@@ -2,6 +2,8 @@ import http from "node:http";
 import {
   DEFAULT_HOST,
   DEFAULT_PORT,
+  EMAIL_CAMPAIGNS_TOOL_PREFIX,
+  EMAIL_PERFORMANCE_TOOL_PREFIX,
   PLUGIN_NAME,
   PLUGIN_VERSION,
   TOOL_PREFIX,
@@ -51,7 +53,23 @@ const TOOL_DEFINITIONS = [
   {
     name: "email-campaign-history-open",
     description:
-      "Return a lightweight payload for opening the MCPViews email campaign history renderer.",
+      "Deprecated compatibility shim for opening the Email Performance dashboard filtered to campaigns.",
+    inputSchema: {
+      type: "object",
+      additionalProperties: true,
+      properties: {
+        threadId: { type: "string" },
+        workspaceId: { type: "string" },
+        projectId: { type: "string" },
+        organizationId: { type: "string" },
+        draft: { type: "object", additionalProperties: true },
+      },
+    },
+  },
+  {
+    name: "email-performance-dashboard-open",
+    description:
+      "Return a lightweight payload for opening the MCPViews Email Performance dashboard.",
     inputSchema: {
       type: "object",
       additionalProperties: true,
@@ -225,7 +243,10 @@ function setCors(response) {
 }
 
 function normalizeToolName(name) {
-  return String(name || "").replace(new RegExp(`^${TOOL_PREFIX}`), "");
+  return String(name || "")
+    .replace(new RegExp(`^${TOOL_PREFIX}`), "")
+    .replace(new RegExp(`^${EMAIL_CAMPAIGNS_TOOL_PREFIX}`), "")
+    .replace(new RegExp(`^${EMAIL_PERFORMANCE_TOOL_PREFIX}`), "");
 }
 
 function builderPayload(args) {
@@ -259,7 +280,22 @@ function launcherPayload(args) {
 function historyPayload(args) {
   const draft = args.draft && typeof args.draft === "object" ? args.draft : {};
   return {
-    renderer: "email_campaign_history",
+    renderer: "email_performance_dashboard",
+    thread_id: args.thread_id || args.threadId || "",
+    workspace_id: args.workspace_id || args.workspaceId || "",
+    project_id: args.project_id || args.projectId || "",
+    organization_id: args.organization_id || args.organizationId || "",
+    draft: {
+      ...draft,
+      source: draft.source || "CAMPAIGN",
+    },
+  };
+}
+
+function performancePayload(args) {
+  const draft = args.draft && typeof args.draft === "object" ? args.draft : {};
+  return {
+    renderer: "email_performance_dashboard",
     thread_id: args.thread_id || args.threadId || "",
     workspace_id: args.workspace_id || args.workspaceId || "",
     project_id: args.project_id || args.projectId || "",
@@ -278,6 +314,9 @@ async function handleToolCall(name, args = {}) {
   }
   if (toolName === "email-campaign-history-open") {
     return toolResult(historyPayload(args));
+  }
+  if (toolName === "email-performance-dashboard-open") {
+    return toolResult(performancePayload(args));
   }
   if (toolName === "email-template-payload-validate") {
     return toolResult(validateDraft(args));

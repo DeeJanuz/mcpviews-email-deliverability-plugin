@@ -1,0 +1,95 @@
+{
+  "name": "email-campaigns",
+  "version": "0.2.0",
+  "download_url": "https://github.com/DeeJanuz/mcpviews-email-deliverability-plugin/releases/download/0.2.0/email-campaigns.zip",
+  "renderers": {
+    "email-template-builder-open": "email_template_builder",
+    "email-campaign-launcher-open": "email_campaign_launcher",
+    "email-template-payload-validate": "rich_content",
+    "email-template-persona-test-prompt": "rich_content",
+    "email-campaign-persona-prompt": "rich_content",
+    "email-template-persona-revision-prompt": "rich_content",
+    "email-template-visual-edit-prompt": "rich_content"
+  },
+  "mcp": {
+    "url": "http://127.0.0.1:4885/mcp",
+    "auth": null,
+    "tool_prefix": "email_campaigns__"
+  },
+  "renderer_definitions": [
+    {
+      "name": "email_template_builder",
+      "description": "Visual email template builder for reusable campaign templates, deterministic plain text preview, block selection, and TribeX workspace persistence.",
+      "scope": "universal",
+      "tools": [
+        "email-template-builder-open"
+      ],
+      "data_hint": "{ \"thread_id\"?: \"string\", \"workspace_id\"?: \"string\", \"project_id\"?: \"string\", \"organization_id\"?: \"string\", \"draft\"?: \"object\" }",
+      "rule": "Use `email_template_builder` when the user wants to draft or edit reusable campaign templates.",
+      "display_mode": "replace",
+      "standalone": true,
+      "standalone_label": "Email Templates"
+    },
+    {
+      "name": "email_campaign_launcher",
+      "description": "Manual campaign launcher for artifact-backed templates and audiences with platform-owned prepare, preview, test, review, apply, and status workflow calls.",
+      "scope": "universal",
+      "tools": [
+        "email-campaign-launcher-open"
+      ],
+      "data_hint": "{ \"thread_id\"?: \"string\", \"workspace_id\"?: \"string\", \"project_id\"?: \"string\", \"organization_id\"?: \"string\", \"draft\"?: \"object\" }",
+      "rule": "Use `email_campaign_launcher` for approval-gated bulk campaign preparation and launch.",
+      "display_mode": "replace",
+      "standalone": true,
+      "standalone_label": "Email Campaigns"
+    }
+  ],
+  "registry_index": {
+    "summary": "Reusable template building and manual artifact-backed email campaign launching.",
+    "tags": [
+      "email",
+      "campaigns",
+      "templates",
+      "audience-filtering",
+      "workspace"
+    ],
+    "tool_groups": [
+      {
+        "name": "Template Builder",
+        "hint": "Open and validate reusable campaign templates.",
+        "tools": [
+          "email-template-builder-open",
+          "email-template-payload-validate",
+          "email-template-persona-test-prompt",
+          "email-campaign-persona-prompt",
+          "email-template-persona-revision-prompt",
+          "email-template-visual-edit-prompt"
+        ]
+      },
+      {
+        "name": "Campaign Launcher",
+        "hint": "Prepare, preview, test, review, apply, and inspect campaign sends.",
+        "tools": [
+          "email-campaign-launcher-open"
+        ]
+      }
+    ],
+    "renderer_names": [
+      "email_template_builder",
+      "email_campaign_launcher"
+    ]
+  },
+  "tool_rules": {
+    "email-template-builder-open": "Returns a payload for `email_template_builder`.",
+    "email-campaign-launcher-open": "Returns a payload for `email_campaign_launcher`.",
+    "email-template-payload-validate": "Validates explicit template placeholders against normalized audience rows.",
+    "email-template-persona-test-prompt": "Builds a safety-scoped persona prompt for one campaign test email.",
+    "email-campaign-persona-prompt": "Builds an approval-gated campaign prepare/preview/test/review/send prompt.",
+    "email-template-persona-revision-prompt": "Builds a same-path template artifact revision prompt.",
+    "email-template-visual-edit-prompt": "Builds a metadata-only visual edit prompt."
+  },
+  "plugin_rules": [
+    "The Email Campaigns plugin owns reusable template building and manual campaign launch UI only.",
+    "Campaign send, tracking, compliance injection, and status operations remain platform-owned."
+  ]
+}

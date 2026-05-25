@@ -11,11 +11,11 @@ This document maps all test files to their corresponding source code and describ
 ## Unit Tests
 
 - `tests/template-engine.test.mjs` covers deterministic placeholder extraction, rendering, missing-variable blocking, one-row test campaign payload construction, artifact-backed campaign payloads, runtime prepare payload normalization, single-test prompt safety wording, and approval-gated campaign prompt wording.
-- `tests/server.test.mjs` covers the local MCP initialize/tools-list flow, prompt schemas for artifact-backed templates/audiences without raw audience rows, prefixed tool-call normalization, renderer payload normalization for runtime prepare payloads, campaign launcher and campaign history payloads, validation output, campaign prompt tool output, metadata-only visual edit prompt output, and JSON-RPC error behavior for unsafe prompt payloads.
-- `tests/manifest.test.mjs` covers standalone renderer registration for Email Templates, Email Campaigns, and Campaign History plus renderer source expectations for context discovery, status refresh, and campaign history platform calls.
+- `tests/server.test.mjs` covers the local MCP initialize/tools-list flow, server version reporting, prompt schemas for artifact-backed templates/audiences without raw audience rows, prefixed tool-call normalization, renderer payload normalization for runtime prepare payloads, campaign launcher, compatibility campaign history, and Email Performance payloads, validation output, campaign prompt tool output, metadata-only visual edit prompt output, and JSON-RPC error behavior for unsafe prompt payloads.
+- `tests/manifest.test.mjs` covers standalone renderer registration for Email Templates, Email Campaigns, and Email Performance, split manifest version/download URLs, release automation asset targets, and renderer source expectations for context discovery, status refresh, and campaign/performance history platform calls.
 - `node --check renderers/email-template-builder.js` covers renderer syntax for the browser-side guided org/workspace/template picker, simplified template editor, deterministic HTML-to-text preview flow, large HTML preview, advanced artifact search/load flow, AI edit mode, visual edit chat, comment modal, and manual rendered-text edit mode.
 - `node --check renderers/email-campaign-launcher.js` covers renderer syntax for the manual campaign wizard, database draft library, plugin UI approval scheduling, and explicit status refresh.
-- `node --check renderers/email-campaign-history.js` covers renderer syntax for campaign history, roll-up stats, status filtering, and read-only platform history loading.
+- `node --check renderers/email-campaign-history.js` covers renderer syntax for campaign history compatibility, Email Performance roll-up stats, source/provider filtering, and read-only platform history loading.
 
 ---
 
@@ -35,6 +35,9 @@ _(No tests yet. Tests will be documented here as they are created.)_
 
 ### Pre-Commit Check
 
+- 2026-05-25 `npm run check` passed for `src/*.mjs`, `tests/*.mjs`, and `renderers/*.js`.
+- 2026-05-25 `npm test` passed with 39 tests.
+- 2026-05-25 `npm run build` passed and produced `release/email-deliverability.zip`, `release/email-campaigns.zip`, and `release/email-performance.zip`.
 - 2026-05-18 `node --check renderers/email-template-builder.js` passed.
 - 2026-05-18 `npm test` passed with 20 tests.
 - 2026-05-17 `npm test` passed with 18 tests.

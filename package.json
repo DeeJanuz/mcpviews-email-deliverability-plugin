@@ -1,6 +1,6 @@
 {
   "name": "mcpviews-email-deliverability-plugin",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "MCPViews email deliverability plugin for deterministic campaign drafting, artifact-backed preview, workspace persistence, persona-mediated test sends, and approval-gated campaign sends.",
   "type": "module",
   "private": true,

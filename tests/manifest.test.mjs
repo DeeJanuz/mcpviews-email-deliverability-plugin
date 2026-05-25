@@ -35,21 +35,72 @@ test("manifest publishes a versioned release download URL", async () => {
   );
 });
 
-test("manifest exposes campaign history as standalone Campaign History renderer", async () => {
+test("compat manifest routes campaign history to Email Performance renderer", async () => {
   const manifest = JSON.parse(
     await readFile(join(__dirname, "..", "manifest.json"), "utf8"),
   );
-  const history = manifest.renderer_definitions.find(
-    (renderer) => renderer.name === "email_campaign_history",
+  const performance = manifest.renderer_definitions.find(
+    (renderer) => renderer.name === "email_performance_dashboard",
   );
 
-  assert.equal(manifest.renderers["email-campaign-history-open"], "email_campaign_history");
-  assert.ok(history);
-  assert.equal(history.standalone, true);
-  assert.equal(history.standalone_label, "Campaign History");
-  assert.deepEqual(history.tools, ["email-campaign-history-open"]);
-  assert.match(history.description, /opens, opt-outs, link clicks, bounces, send times/);
-  assert.ok(manifest.registry_index.renderer_names.includes("email_campaign_history"));
+  assert.equal(manifest.renderers["email-campaign-history-open"], "email_performance_dashboard");
+  assert.equal(manifest.renderers["email-performance-dashboard-open"], "email_performance_dashboard");
+  assert.ok(performance);
+  assert.equal(performance.standalone, true);
+  assert.equal(performance.standalone_label, "Email Performance");
+  assert.deepEqual(performance.tools, [
+    "email-campaign-history-open",
+    "email-performance-dashboard-open",
+  ]);
+  assert.match(performance.description, /campaigns and tracked one-off emails/);
+  assert.ok(manifest.registry_index.renderer_names.includes("email_performance_dashboard"));
+});
+
+test("split manifests expose campaign and performance plugin prefixes", async () => {
+  const campaigns = JSON.parse(
+    await readFile(join(__dirname, "..", "manifest.email-campaigns.json"), "utf8"),
+  );
+  const performance = JSON.parse(
+    await readFile(join(__dirname, "..", "manifest.email-performance.json"), "utf8"),
+  );
+
+  assert.equal(campaigns.name, "email-campaigns");
+  assert.equal(campaigns.version, "0.2.0");
+  assert.equal(
+    campaigns.download_url,
+    "https://github.com/DeeJanuz/mcpviews-email-deliverability-plugin/releases/download/0.2.0/email-campaigns.zip",
+  );
+  assert.equal(campaigns.mcp.tool_prefix, "email_campaigns__");
+  assert.ok(campaigns.registry_index.renderer_names.includes("email_template_builder"));
+  assert.ok(campaigns.registry_index.renderer_names.includes("email_campaign_launcher"));
+  assert.equal(performance.name, "email-performance");
+  assert.equal(performance.version, "0.2.0");
+  assert.equal(
+    performance.download_url,
+    "https://github.com/DeeJanuz/mcpviews-email-deliverability-plugin/releases/download/0.2.0/email-performance.zip",
+  );
+  assert.equal(performance.mcp.tool_prefix, "email_performance__");
+  assert.equal(
+    performance.renderers["email-performance-dashboard-open"],
+    "email_performance_dashboard",
+  );
+});
+
+test("release automation publishes split plugin zip assets", async () => {
+  const buildScript = await readFile(join(__dirname, "..", "build.sh"), "utf8");
+  const workflow = await readFile(
+    join(__dirname, "..", ".github", "workflows", "release.yml"),
+    "utf8",
+  );
+
+  assert.match(buildScript, /email-campaigns:manifest\.email-campaigns\.json/);
+  assert.match(buildScript, /email-performance:manifest\.email-performance\.json/);
+  assert.match(buildScript, /\$\{PLUGIN_NAME\}\.zip/);
+  assert.match(workflow, /manifest\.email-campaigns\.json/);
+  assert.match(workflow, /manifest\.email-performance\.json/);
+  assert.match(workflow, /release\/email-campaigns\.zip/);
+  assert.match(workflow, /release\/email-performance\.zip/);
+  assert.doesNotMatch(workflow, /release\/email-deliverability\.zip/);
 });
 
 test("campaign launcher renderer exposes context discovery, database draft open, and detail helpers", async () => {
@@ -92,18 +143,20 @@ test("campaign launcher renderer exposes context discovery, database draft open,
   assert.doesNotMatch(renderer, /data-field="newFolderPath"/);
 });
 
-test("campaign history renderer lists delivery stats and calls platform history API", async () => {
+test("email performance renderer lists delivery stats and calls platform history APIs", async () => {
   const renderer = await readFile(
     join(__dirname, "..", "renderers", "email-campaign-history.js"),
     "utf8",
   );
 
   assert.match(renderer, /window\.__renderers\.email_campaign_history/);
-  assert.match(renderer, /Campaign History/);
-  assert.match(renderer, /Refresh History/);
+  assert.match(renderer, /window\.__renderers\.email_performance_dashboard/);
+  assert.match(renderer, /Email Performance/);
+  assert.match(renderer, /Refresh Performance/);
   assert.match(renderer, /opens/i);
   assert.match(renderer, /Link clicks/);
-  assert.match(renderer, /Opt outs/);
+  assert.match(renderer, /Source/);
+  assert.match(renderer, /Provider/);
   assert.match(renderer, /Bounces/);
   assert.match(renderer, /--glass-bg/);
   assert.match(renderer, /--accent-primary:#818cf8/);
@@ -111,6 +164,8 @@ test("campaign history renderer lists delivery stats and calls platform history 
   assert.match(renderer, /prefers-color-scheme:light/);
   assert.match(renderer, /\/api\/mcpviews\/email-deliverability\/campaigns\/history/);
   assert.match(renderer, /\/api\/internal\/runtime\/email-deliverability\/campaigns\/history/);
+  assert.match(renderer, /\/api\/mcpviews\/email-performance\/messages\/history/);
+  assert.match(renderer, /\/api\/internal\/runtime\/email-performance\/messages\/history/);
 });
 
 test("campaign launcher auto-loads the Campaign Library after workspace context is selected", async () => {

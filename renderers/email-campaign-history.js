@@ -13,6 +13,18 @@
     'FAILED',
     'CANCELED',
   ];
+  var SOURCES = [
+    { value: 'ALL', label: 'All sources' },
+    { value: 'CAMPAIGN', label: 'Campaigns' },
+    { value: 'ONE_OFF', label: 'One-off' },
+  ];
+  var PROVIDERS = [
+    { value: 'ALL', label: 'All providers' },
+    { value: 'INTERNAL', label: 'Internal' },
+    { value: 'GMAIL', label: 'Gmail' },
+    { value: 'OUTLOOK', label: 'Outlook' },
+    { value: 'RESEND', label: 'Resend' },
+  ];
 
   function esc(value) {
     return String(value == null ? '' : value)
@@ -103,6 +115,55 @@
 
   function campaignRecord(item) {
     return isRecord(item && item.campaign) ? item.campaign : {};
+  }
+
+  function performanceItemToCampaignHistory(item) {
+    if (!isRecord(item)) return item;
+    if (isRecord(item.campaign)) return item;
+    var stats = isRecord(item.stats) ? item.stats : {};
+    return {
+      campaign: {
+        id: item.id,
+        name: item.name || item.subject || item.id,
+        status: item.status,
+        subject: item.subject,
+        createdAt: item.createdAt,
+        updatedAt: item.updatedAt,
+      },
+      stats: {
+        recipientCount: Array.isArray(item.toAddresses) ? item.toAddresses.length : numberValue(stats.sentCount),
+        sendableCount: Array.isArray(item.toAddresses) ? item.toAddresses.length : numberValue(stats.sentCount),
+        suppressedCount: 0,
+        queuedCount: item.status === 'QUEUED' ? 1 : 0,
+        sentCount: stats.sentCount,
+        failedCount: stats.failedCount,
+        openCount: stats.openCount,
+        uniqueOpenCount: stats.uniqueOpenCount,
+        linkClickCount: stats.clickCount,
+        uniqueClickCount: stats.uniqueClickCount,
+        optOutCount: 0,
+        bounceCount: stats.bounceCount,
+        openRate: stats.openRate,
+        clickRate: stats.clickRate,
+        optOutRate: null,
+        bounceRate: null,
+      },
+      sendTimes: {
+        scheduledAt: null,
+        scheduledTimeZone: null,
+        approvedAt: null,
+        sendStartedAt: item.sentAt,
+        completedAt: item.sentAt,
+        canceledAt: null,
+        lastEventAt: item.lastEventAt,
+      },
+      provenance: item.provenance || {},
+      eventTotals: {},
+      events: Array.isArray(item.events) ? item.events : [],
+      provider: item.provider,
+      source: item.source,
+      oneOffSource: item.oneOffSource,
+    };
   }
 
   function statusClass(status) {
@@ -197,14 +258,18 @@
     ].join('');
   }
 
-  window.__renderers.email_campaign_history = function(container, data) {
+  function renderEmailHistory(container, data) {
     var draft = isRecord(data && data.draft) ? data.draft : {};
+    var performanceMode = data && data.renderer === 'email_performance_dashboard';
     var state = {
+      performanceMode: performanceMode,
       threadId: firstString([data && data.thread_id, data && data.threadId], ''),
       workspaceId: normalizeIdentifier(firstString([data && data.workspace_id, data && data.workspaceId], '')),
       projectId: normalizeIdentifier(firstString([data && data.project_id, data && data.projectId], '')),
       organizationId: normalizeIdentifier(firstString([data && data.organization_id, data && data.organizationId], '')),
       statusFilter: firstString([draft.status], ''),
+      sourceFilter: firstString([draft.source], 'ALL'),
+      providerFilter: firstString([draft.provider], 'ALL'),
       limit: Number(draft.limit || 25),
       includeEvents: draft.includeEvents === true,
       orgOptions: [],
@@ -213,7 +278,7 @@
       selectedCampaignId: firstString([draft.campaignId], ''),
       contextStatus: 'Finding organizations and workspace context.',
       status: 'Ready',
-      detail: 'Load campaign history.',
+      detail: performanceMode ? 'Load email performance.' : 'Load campaign history.',
       error: '',
       busy: false,
       lastResult: null,
@@ -222,14 +287,16 @@
     container.innerHTML =
       '<style>' + styles() + '</style>' +
       '<div class="email-history"><div class="email-history-shell">' +
-      '<div class="email-history-top"><div class="email-history-title"><div class="email-history-kicker">Campaign Analytics</div><h2>Campaign History</h2><p>Database-backed campaign delivery history, send timing, and engagement stats.</p></div><div class="email-history-state"><strong data-role="status-title">Ready</strong><span data-role="status-detail">Load campaign history.</span></div></div>' +
+      '<div class="email-history-top"><div class="email-history-title"><div class="email-history-kicker">' + (performanceMode ? 'Email Performance' : 'Campaign Analytics') + '</div><h2>' + (performanceMode ? 'Email Performance' : 'Campaign History') + '</h2><p>' + (performanceMode ? 'Read-only delivery and engagement performance for campaigns and tracked one-off emails.' : 'Database-backed campaign delivery history, send timing, and engagement stats.') + '</p></div><div class="email-history-state"><strong data-role="status-title">Ready</strong><span data-role="status-detail">' + (performanceMode ? 'Load email performance.' : 'Load campaign history.') + '</span></div></div>' +
       '<div class="email-history-error" data-role="error"></div>' +
       '<section class="email-history-panel"><div class="email-history-controls">' +
       '<div class="email-history-field"><label>Organization</label><select data-select="organizationId"></select></div>' +
       '<div class="email-history-field"><label>Workspace</label><select data-select="workspaceId"></select></div>' +
+      '<div class="email-history-field" data-role="source-field"><label>Source</label><select data-role="source-filter"></select></div>' +
+      '<div class="email-history-field" data-role="provider-field"><label>Provider</label><select data-role="provider-filter"></select></div>' +
       '<div class="email-history-field"><label>Status</label><select data-role="status-filter"></select></div>' +
       '<div class="email-history-field"><label>Limit</label><input data-role="limit" type="number" min="1" max="100" step="1"></div>' +
-      '<div class="email-history-actions">' + button('Refresh History', 'refresh-history', 'primary') + button('Context', 'discover-context') + '</div>' +
+      '<div class="email-history-actions">' + button(performanceMode ? 'Refresh Performance' : 'Refresh History', 'refresh-history', 'primary') + button('Context', 'discover-context') + '</div>' +
       '</div><div class="email-history-context" data-role="context-status"></div></section>' +
       '<section class="email-history-metrics" data-role="metrics"></section>' +
       '<section class="email-history-panel" data-role="table-panel"></section>' +
@@ -242,6 +309,10 @@
     var contextStatusEl = container.querySelector('[data-role="context-status"]');
     var organizationSelect = container.querySelector('[data-select="organizationId"]');
     var workspaceSelect = container.querySelector('[data-select="workspaceId"]');
+    var sourceField = container.querySelector('[data-role="source-field"]');
+    var providerField = container.querySelector('[data-role="provider-field"]');
+    var sourceFilterEl = container.querySelector('[data-role="source-filter"]');
+    var providerFilterEl = container.querySelector('[data-role="provider-filter"]');
     var statusFilterEl = container.querySelector('[data-role="status-filter"]');
     var limitEl = container.querySelector('[data-role="limit"]');
     var metricsEl = container.querySelector('[data-role="metrics"]');
@@ -317,6 +388,23 @@
       workspaceSelect.innerHTML = workspaceHtml.join('');
       workspaceSelect.disabled = state.busy || (!state.organizationId && !state.workspaceId);
 
+      if (sourceField) sourceField.style.display = state.performanceMode ? '' : 'none';
+      if (providerField) providerField.style.display = state.performanceMode ? '' : 'none';
+      if (sourceFilterEl) {
+        sourceFilterEl.innerHTML = SOURCES.map(function(source) {
+          return optionHtml(source.value, source.label, state.sourceFilter === source.value);
+        }).join('');
+        sourceFilterEl.disabled = state.busy;
+      }
+      if (providerFilterEl) {
+        providerFilterEl.innerHTML = PROVIDERS.map(function(provider) {
+          return optionHtml(provider.value, provider.label, state.providerFilter === provider.value);
+        }).join('');
+        providerFilterEl.disabled = state.busy;
+      }
+
+      var statusField = statusFilterEl.closest('.email-history-field');
+      if (statusField) statusField.style.display = state.performanceMode ? 'none' : '';
       statusFilterEl.innerHTML = [optionHtml('', 'All statuses', !state.statusFilter)].concat(STATUSES.map(function(status) {
         return optionHtml(status, humanizeStatus(status), state.statusFilter === status);
       })).join('');
@@ -333,6 +421,7 @@
         sum.sent += numberValue(stats.sentCount);
         sum.opens += numberValue(stats.openCount);
         sum.clicks += numberValue(stats.linkClickCount);
+        sum.failed += numberValue(stats.failedCount);
         sum.optOuts += numberValue(stats.optOutCount);
         sum.bounces += numberValue(stats.bounceCount);
         return sum;
@@ -342,6 +431,7 @@
         sent: 0,
         opens: 0,
         clicks: 0,
+        failed: 0,
         optOuts: 0,
         bounces: 0,
       });
@@ -350,23 +440,23 @@
     function renderMetrics() {
       var sum = totals();
       metricsEl.innerHTML = [
-        metric('Campaigns', formatNumber(sum.campaigns), state.statusFilter || 'all statuses'),
-        metric('Recipients', formatNumber(sum.recipients), 'total audience'),
+        metric(state.performanceMode ? 'Messages' : 'Campaigns', formatNumber(sum.campaigns), state.performanceMode ? state.sourceFilter.toLowerCase().replace('_', '-') : (state.statusFilter || 'all statuses')),
+        metric(state.performanceMode ? 'Recipients' : 'Recipients', formatNumber(sum.recipients), state.performanceMode ? state.providerFilter.toLowerCase() : 'total audience'),
         metric('Sent', formatNumber(sum.sent), 'accepted sends'),
         metric('Opens', formatNumber(sum.opens), 'recorded events'),
         metric('Link clicks', formatNumber(sum.clicks), 'recorded events'),
-        metric('Opt outs / bounces', formatNumber(sum.optOuts) + ' / ' + formatNumber(sum.bounces), 'list health'),
+        metric(state.performanceMode ? 'Failed / bounced' : 'Opt outs / bounces', formatNumber(state.performanceMode ? sum.failed : sum.optOuts) + ' / ' + formatNumber(sum.bounces), state.performanceMode ? 'delivery health' : 'list health'),
       ].join('');
     }
 
     function renderTable() {
       if (!state.campaigns.length) {
-        tablePanelEl.innerHTML = '<div class="email-history-empty">No campaigns found for this workspace.</div>';
+        tablePanelEl.innerHTML = '<div class="email-history-empty">No ' + (state.performanceMode ? 'messages' : 'campaigns') + ' found for this workspace.</div>';
         return;
       }
       tablePanelEl.innerHTML = [
         '<div class="email-history-table-wrap"><table class="email-history-table"><thead><tr>',
-        '<th>Campaign</th><th>Status</th><th>Recipients</th><th>Sent</th><th>Opens</th><th>Clicks</th><th>Opt outs</th><th>Bounces</th><th>Scheduled</th><th>Started</th><th>Completed</th>',
+        '<th>' + (state.performanceMode ? 'Message' : 'Campaign') + '</th><th>Status</th><th>Recipients</th><th>Sent</th><th>Opens</th><th>Clicks</th><th>' + (state.performanceMode ? 'Provider' : 'Opt outs') + '</th><th>Bounces</th><th>Scheduled</th><th>Started</th><th>Completed</th>',
         '</tr></thead><tbody>',
         state.campaigns.map(function(item) {
           var campaign = campaignRecord(item);
@@ -381,7 +471,7 @@
             '<td>' + esc(formatNumber(stats.sentCount)) + '</td>',
             '<td>' + esc(formatNumber(stats.openCount)) + '<div class="email-history-subject">' + esc(formatRate(stats.openRate)) + '</div></td>',
             '<td>' + esc(formatNumber(stats.linkClickCount)) + '<div class="email-history-subject">' + esc(formatRate(stats.clickRate)) + '</div></td>',
-            '<td>' + esc(formatNumber(stats.optOutCount)) + '</td>',
+            '<td>' + esc(state.performanceMode ? (item.provider || '-') : formatNumber(stats.optOutCount)) + '</td>',
             '<td>' + esc(formatNumber(stats.bounceCount)) + '</td>',
             '<td>' + esc(formatDate(times.scheduledAt)) + '</td>',
             '<td>' + esc(formatDate(times.sendStartedAt)) + '</td>',
@@ -591,7 +681,7 @@
 
     function missingManualEndpoint(error) {
       var message = error && error.message ? error.message : String(error || '');
-      return /HTTP 404/.test(message) && /\/api\/mcpviews\/email-deliverability\//.test(message) && message.indexOf('"error"') < 0;
+      return /HTTP 404/.test(message) && /\/api\/mcpviews\/email-(deliverability|performance)\//.test(message) && message.indexOf('"error"') < 0;
     }
 
     function withManualContext(payload) {
@@ -609,7 +699,10 @@
         var token = runtimeSession && runtimeSession.token;
         var host = runtimeSession && runtimeSession.connection && runtimeSession.connection.host;
         if (!token || !host) throw new Error('Runtime session did not include a direct platform bearer token.');
-        return fetch(host.replace(/\/+$/, '') + '/api/internal/runtime/email-deliverability/campaigns/history', {
+        var path = state.performanceMode
+          ? '/api/internal/runtime/email-performance/messages/history'
+          : '/api/internal/runtime/email-deliverability/campaigns/history';
+        return fetch(host.replace(/\/+$/, '') + path, {
           method: 'POST',
           headers: {
             Authorization: 'Bearer ' + token,
@@ -630,12 +723,18 @@
     function callHistory(payload) {
       var api = client();
       if (api && typeof api.request === 'function') {
-        return api.request('POST', '/api/mcpviews/email-deliverability/campaigns/history', withManualContext(payload)).catch(function(error) {
+        var path = state.performanceMode
+          ? '/api/mcpviews/email-performance/messages/history'
+          : '/api/mcpviews/email-deliverability/campaigns/history';
+        return api.request('POST', path, withManualContext(payload)).catch(function(error) {
           if (missingManualEndpoint(error)) return callRuntimeHistory(payload);
           throw new Error(platformErrorDetail(error));
         });
       }
       if (api && typeof api.callEmailDeliverability === 'function') {
+        if (state.performanceMode && typeof api.request === 'function') {
+          return api.request('POST', '/api/mcpviews/email-performance/messages/history', withManualContext(payload || {}));
+        }
         return api.callEmailDeliverability('history', withManualContext(payload || {})).catch(function(error) {
           if (missingManualEndpoint(error)) return callRuntimeHistory(payload);
           throw new Error(platformErrorDetail(error));
@@ -648,17 +747,21 @@
       if (!state.workspaceId) throw new Error('Select a workspace first.');
       var payload = compactObject({
         limit: Math.min(Math.max(Number(state.limit || 25), 1), 100),
-        status: state.statusFilter || undefined,
+        status: state.performanceMode ? undefined : state.statusFilter || undefined,
+        source: state.performanceMode ? state.sourceFilter || 'ALL' : undefined,
+        provider: state.performanceMode ? state.providerFilter || 'ALL' : undefined,
         includeEvents: state.includeEvents,
       });
       return callHistory(payload).then(function(result) {
         state.lastResult = result;
-        state.campaigns = Array.isArray(result && result.campaigns) ? result.campaigns : [];
+        state.campaigns = state.performanceMode
+          ? (Array.isArray(result && result.messages) ? result.messages.map(performanceItemToCampaignHistory) : [])
+          : (Array.isArray(result && result.campaigns) ? result.campaigns : []);
         if (!state.selectedCampaignId && state.campaigns[0]) {
           state.selectedCampaignId = campaignRecord(state.campaigns[0]).id;
         }
         renderAll();
-        setStatus('History loaded', state.campaigns.length + ' campaign(s)');
+        setStatus(state.performanceMode ? 'Performance loaded' : 'History loaded', state.campaigns.length + (state.performanceMode ? ' message(s)' : ' campaign(s)'));
         return result;
       });
     }
@@ -685,6 +788,26 @@
       state.statusFilter = statusFilterEl.value;
       if (state.workspaceId) runAction('refresh-history');
     });
+
+    if (sourceFilterEl) {
+      sourceFilterEl.addEventListener('change', function() {
+        state.sourceFilter = sourceFilterEl.value || 'ALL';
+        state.campaigns = [];
+        state.selectedCampaignId = '';
+        renderAll();
+        if (state.workspaceId) runAction('refresh-history');
+      });
+    }
+
+    if (providerFilterEl) {
+      providerFilterEl.addEventListener('change', function() {
+        state.providerFilter = providerFilterEl.value || 'ALL';
+        state.campaigns = [];
+        state.selectedCampaignId = '';
+        renderAll();
+        if (state.workspaceId) runAction('refresh-history');
+      });
+    }
 
     limitEl.addEventListener('input', function() {
       state.limit = Math.min(Math.max(Number(limitEl.value || 25), 1), 100);
@@ -734,5 +857,17 @@
       state.contextStatus = 'TribeX AI client is unavailable. Open from an authenticated MCPViews AI session.';
       renderControls();
     }
+  }
+
+  window.__renderers.email_campaign_history = function(container, data) {
+    return renderEmailHistory(container, Object.assign({}, data || {}, {
+      renderer: 'email_campaign_history',
+    }));
+  };
+
+  window.__renderers.email_performance_dashboard = function(container, data) {
+    return renderEmailHistory(container, Object.assign({}, data || {}, {
+      renderer: 'email_performance_dashboard',
+    }));
   };
 })();

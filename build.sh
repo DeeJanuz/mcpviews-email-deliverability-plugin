@@ -1,50 +1,63 @@
 #!/bin/bash
 set -euo pipefail
 
-PLUGIN_NAME="email-deliverability"
-ZIP_NAME="${PLUGIN_NAME}.zip"
 REPO_SLUG="DeeJanuz/mcpviews-email-deliverability-plugin"
 RELEASE_DIR="release"
 BUILD_DIR=".build"
 
-echo "Building ${ZIP_NAME}..."
+PACKAGES=(
+  "email-deliverability:manifest.json"
+  "email-campaigns:manifest.email-campaigns.json"
+  "email-performance:manifest.email-performance.json"
+)
+
+echo "Building plugin release assets..."
 
 rm -rf "${RELEASE_DIR}" "${BUILD_DIR}"
 mkdir -p "${RELEASE_DIR}" "${BUILD_DIR}"
 
-VERSION=$(python3 -c "import json; print(json.load(open('manifest.json'))['version'])")
-DOWNLOAD_URL="https://github.com/${REPO_SLUG}/releases/download/${VERSION}/${ZIP_NAME}"
+for package in "${PACKAGES[@]}"; do
+  PLUGIN_NAME="${package%%:*}"
+  MANIFEST_PATH="${package#*:}"
+  ZIP_NAME="${PLUGIN_NAME}.zip"
+  PACKAGE_BUILD_DIR="${BUILD_DIR}/${PLUGIN_NAME}"
+  VERSION=$(python3 -c "import json; print(json.load(open('${MANIFEST_PATH}'))['version'])")
+  DOWNLOAD_URL="https://github.com/${REPO_SLUG}/releases/download/${VERSION}/${ZIP_NAME}"
 
-python3 -c "
+  python3 -c "
 import json
-m = json.load(open('manifest.json'))
+path = '${MANIFEST_PATH}'
+m = json.load(open(path))
 m['download_url'] = '${DOWNLOAD_URL}'
-json.dump(m, open('manifest.json', 'w'), indent=2)
-open('manifest.json', 'a').write('\n')
-print('  Updated source manifest download_url')
+json.dump(m, open(path, 'w'), indent=2)
+open(path, 'a').write('\n')
+print('  Updated ' + path + ' download_url')
 "
 
-cp manifest.json "${BUILD_DIR}/manifest.json"
-cp package.json "${BUILD_DIR}/package.json"
-cp README.md "${BUILD_DIR}/README.md"
-cp -r renderers "${BUILD_DIR}/renderers"
-cp -r src "${BUILD_DIR}/src"
+  mkdir -p "${PACKAGE_BUILD_DIR}"
+  cp "${MANIFEST_PATH}" "${PACKAGE_BUILD_DIR}/manifest.json"
+  cp package.json "${PACKAGE_BUILD_DIR}/package.json"
+  cp README.md "${PACKAGE_BUILD_DIR}/README.md"
+  cp -r renderers "${PACKAGE_BUILD_DIR}/renderers"
+  cp -r src "${PACKAGE_BUILD_DIR}/src"
 
-if [ -d fixtures ]; then
-  cp -r fixtures "${BUILD_DIR}/fixtures"
-fi
+  if [ -d fixtures ]; then
+    cp -r fixtures "${PACKAGE_BUILD_DIR}/fixtures"
+  fi
 
-echo "  Version: ${VERSION}"
-echo "  Download URL: ${DOWNLOAD_URL}"
+  echo "  Package: ${PLUGIN_NAME}"
+  echo "  Version: ${VERSION}"
+  echo "  Download URL: ${DOWNLOAD_URL}"
 
-cd "${BUILD_DIR}"
-ZIP_INPUTS=(manifest.json package.json README.md renderers/ src/)
-if [ -d fixtures ]; then
-  ZIP_INPUTS+=(fixtures/)
-fi
-zip -r "../${RELEASE_DIR}/${ZIP_NAME}" "${ZIP_INPUTS[@]}"
-cd ..
+  cd "${PACKAGE_BUILD_DIR}"
+  ZIP_INPUTS=(manifest.json package.json README.md renderers/ src/)
+  if [ -d fixtures ]; then
+    ZIP_INPUTS+=(fixtures/)
+  fi
+  zip -r "../../${RELEASE_DIR}/${ZIP_NAME}" "${ZIP_INPUTS[@]}"
+  cd - >/dev/null
+
+  echo "Built ${RELEASE_DIR}/${ZIP_NAME} ($(du -h "${RELEASE_DIR}/${ZIP_NAME}" | cut -f1))"
+done
 
 rm -rf "${BUILD_DIR}"
-
-echo "Built ${RELEASE_DIR}/${ZIP_NAME} ($(du -h "${RELEASE_DIR}/${ZIP_NAME}" | cut -f1))"
